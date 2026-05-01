@@ -1,0 +1,77 @@
+{
+  "success": true,
+  "timestamp": "2026-04-28T23:56:46.084180",
+  "departure_time": "2026-04-28T13:00:46.067471",
+  "ship": {
+    "name": "模板_大型油轮",
+    "mmsi": "",
+    "type": "大型油轮",
+    "length": 300,
+    "width": 50,
+    "draft": 15.0,
+    "height": 25,
+    "tonnage": 120000,
+    "max_speed": 15,
+    "risk_level": "高风险",
+    "maneuverability": 0.25
+  },
+  "start_node": 256,
+  "end_node": 1723,
+  "recommended_path": {
+    "type": "安全优先",
+    "nodes": [
+      256,
+      1706,
+      1723
+    ],
+    "edges": [
+      [
+        256,
+        1706
+      ],
+      [
+        1706,
+        1723
+      ]
+    ],
+    "total_distance_km": 20.91,
+    "total_time_min": 84.7,
+    "avg_speed_knots": 8.0,
+    "risk_score": 72.5,
+    "safety_score": 27.5,
+    "total_frequency": 0,
+    "constraints_met": true,
+    "waypoint_count": 2,
+    "waypoints": [
+      {
+        "sequence": 1,
+        "from_node": 256,
+        "to_node": 1706,
+        "distance": 1966.5555159009655,
+        "time": 477.8760487706468,
+        "risk": 65.0,
+        "waterway_type": "open"
+      },
+      {
+        "sequence": 2,
+        "from_node": 1706,
+        "to_node": 1723,
+        "distance": 18946.391668986,
+        "time": 4604.002641180502,
+        "risk": 80.0,
+        "waterway_type": "open"
+      }
+    ]
+  },
+  "alternative_paths": [],
+  "comparison_summary": [
+    {
+      "type": "安全优先",
+      "distance_km": 20.91,
+      "time_min": 84.7,
+      "safety_score": 27.5,
+      "risk_score": 72.5,
+      "total_frequency": 0
+    }
+  ]
+}

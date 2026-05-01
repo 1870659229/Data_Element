@@ -1,0 +1,112 @@
+{
+  "model_name": "gnn",
+  "feature_names": [
+    "distance",
+    "theoretical_time",
+    "avg_reported_speed",
+    "bearing",
+    "bearing_sin",
+    "bearing_cos",
+    "avg_course_change",
+    "is_peak_hour",
+    "is_weekend",
+    "waterway_type",
+    "hour",
+    "node_degree_from",
+    "node_degree_to",
+    "edge_betweenness",
+    "sample_count"
+  ],
+  "feature_count": 15,
+  "time_periods": {
+    "night": [
+      0,
+      6
+    ],
+    "morning": [
+      6,
+      10
+    ],
+    "midday": [
+      10,
+      14
+    ],
+    "afternoon": [
+      14,
+      18
+    ],
+    "evening": [
+      18,
+      22
+    ],
+    "late_night": [
+      22,
+      24
+    ]
+  },
+  "peak_hours": [
+    6,
+    7,
+    8,
+    9,
+    17,
+    18,
+    19
+  ],
+  "use_grid_search": true,
+  "training_timestamp": "2026-04-28T23:56:38.726685",
+  "feature_importance": {
+    "theoretical_time": 0.640756974211458,
+    "distance": 0.1318671067779681,
+    "avg_course_change": 0.09736739024580955,
+    "avg_reported_speed": 0.026524497194798154,
+    "sample_count": 0.02299327079205199,
+    "bearing_cos": 0.01545606639287745,
+    "bearing_sin": 0.015338319137057296,
+    "hour": 0.012152343143804655,
+    "bearing": 0.01179420848454237,
+    "edge_betweenness": 0.007912341664508405,
+    "node_degree_to": 0.006313224802618118,
+    "node_degree_from": 0.006107129673277498,
+    "waterway_type": 0.0019502597298870893,
+    "is_peak_hour": 0.0017419052026103252,
+    "is_weekend": 0.0017249625467310856
+  },
+  "model_comparison": {
+    "xgboost": {
+      "mae": 14.134458475655,
+      "rmse": 31.864536508718775,
+      "r2": 0.3835708524890563,
+      "mape": 52.10740770136491,
+      "train_time": 14.060468912124634
+    },
+    "lightgbm": {
+      "mae": 14.203430344449654,
+      "rmse": 32.35273188902127,
+      "r2": 0.3645375807564264,
+      "mape": 51.82574062663108,
+      "train_time": 18.494433164596558
+    },
+    "lightgbm_tweedie": {
+      "mae": 14.183725097254499,
+      "rmse": 31.349127621859978,
+      "r2": 0.40335105900402635,
+      "mape": 55.66974989464954,
+      "train_time": 17.96146249771118
+    },
+    "random_forest": {
+      "mae": 14.153694577856104,
+      "rmse": 32.100471851148384,
+      "r2": 0.37440857549588824,
+      "mape": 52.40546491857542,
+      "train_time": 34.34876489639282
+    },
+    "gnn": {
+      "mae": 9.707905633703028,
+      "rmse": 24.8957369194634,
+      "r2": 0.6508040998552217,
+      "mape": 26.89038631042939,
+      "train_time": 40.555365562438965
+    }
+  }
+}

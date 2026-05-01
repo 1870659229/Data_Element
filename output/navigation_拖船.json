@@ -1,0 +1,77 @@
+{
+  "success": true,
+  "timestamp": "2026-04-28T23:56:46.148763",
+  "departure_time": "2026-04-28T16:00:46.141777",
+  "ship": {
+    "name": "模板_拖船",
+    "mmsi": "",
+    "type": "拖船",
+    "length": 25,
+    "width": 8,
+    "draft": 3.0,
+    "height": 10,
+    "tonnage": 300,
+    "max_speed": 12,
+    "risk_level": "低风险",
+    "maneuverability": 0.9375
+  },
+  "start_node": 256,
+  "end_node": 1723,
+  "recommended_path": {
+    "type": "安全优先",
+    "nodes": [
+      256,
+      1706,
+      1723
+    ],
+    "edges": [
+      [
+        256,
+        1706
+      ],
+      [
+        1706,
+        1723
+      ]
+    ],
+    "total_distance_km": 20.91,
+    "total_time_min": 84.7,
+    "avg_speed_knots": 8.0,
+    "risk_score": 21.5,
+    "safety_score": 78.5,
+    "total_frequency": 0,
+    "constraints_met": true,
+    "waypoint_count": 2,
+    "waypoints": [
+      {
+        "sequence": 1,
+        "from_node": 256,
+        "to_node": 1706,
+        "distance": 1966.5555159009655,
+        "time": 477.8760487706468,
+        "risk": 20.0,
+        "waterway_type": "open"
+      },
+      {
+        "sequence": 2,
+        "from_node": 1706,
+        "to_node": 1723,
+        "distance": 18946.391668986,
+        "time": 4604.002641180502,
+        "risk": 23.0,
+        "waterway_type": "open"
+      }
+    ]
+  },
+  "alternative_paths": [],
+  "comparison_summary": [
+    {
+      "type": "安全优先",
+      "distance_km": 20.91,
+      "time_min": 84.7,
+      "safety_score": 78.5,
+      "risk_score": 21.5,
+      "total_frequency": 0
+    }
+  ]
+}

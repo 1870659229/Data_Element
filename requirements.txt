@@ -1,0 +1,24 @@
+# 航道拓扑节点网络提取系统 - 依赖包
+
+# 数据处理
+pandas>=1.5.0
+numpy>=1.21.0
+openpyxl>=3.0.0
+
+# 机器学习
+scikit-learn>=1.0.0
+xgboost>=1.7.0
+lightgbm>=3.3.0
+
+# 超参优化（可选，用于贝叶斯调参）
+optuna>=3.0.0
+
+# 深度学习（可选，用于 MLP 和 GNN）
+torch>=1.10.0
+torch-geometric>=2.0.0
+
+# 网络分析
+networkx>=2.6.0
+
+# 可视化
+matplotlib>=3.5.0
