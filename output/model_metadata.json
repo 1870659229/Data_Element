@@ -1,23 +1,30 @@
 {
   "model_name": "gnn",
   "feature_names": [
-    "distance",
-    "theoretical_time",
     "avg_reported_speed",
+    "std_reported_speed",
+    "speed_cv",
     "bearing",
     "bearing_sin",
     "bearing_cos",
     "avg_course_change",
+    "std_course_change",
+    "course_change_x_narrow",
     "is_peak_hour",
     "is_weekend",
     "waterway_type",
     "hour",
+    "hour_sin",
+    "hour_cos",
     "node_degree_from",
     "node_degree_to",
     "edge_betweenness",
-    "sample_count"
+    "sample_count",
+    "log_sample_count",
+    "narrow_x_peak",
+    "course_change_x_peak"
   ],
-  "feature_count": 15,
+  "feature_count": 22,
   "time_periods": {
     "night": [
       0,
@@ -54,59 +61,66 @@
     19
   ],
   "use_grid_search": true,
-  "training_timestamp": "2026-04-28T23:56:38.726685",
+  "training_timestamp": "2026-05-05T10:27:15.644013",
   "feature_importance": {
-    "theoretical_time": 0.640756974211458,
-    "distance": 0.1318671067779681,
-    "avg_course_change": 0.09736739024580955,
-    "avg_reported_speed": 0.026524497194798154,
-    "sample_count": 0.02299327079205199,
-    "bearing_cos": 0.01545606639287745,
-    "bearing_sin": 0.015338319137057296,
-    "hour": 0.012152343143804655,
-    "bearing": 0.01179420848454237,
-    "edge_betweenness": 0.007912341664508405,
-    "node_degree_to": 0.006313224802618118,
-    "node_degree_from": 0.006107129673277498,
-    "waterway_type": 0.0019502597298870893,
-    "is_peak_hour": 0.0017419052026103252,
-    "is_weekend": 0.0017249625467310856
+    "avg_reported_speed": 0.2743394261878661,
+    "avg_course_change": 0.16245298045784065,
+    "bearing": 0.0576533417236975,
+    "std_course_change": 0.05582629466419783,
+    "bearing_cos": 0.05528032301301246,
+    "speed_cv": 0.04959565312646047,
+    "hour_cos": 0.04758646888798038,
+    "bearing_sin": 0.04654203560358921,
+    "hour": 0.043537595236327005,
+    "std_reported_speed": 0.03818349595521133,
+    "course_change_x_peak": 0.0364154864013817,
+    "course_change_x_narrow": 0.03189044313893446,
+    "hour_sin": 0.02220552204959813,
+    "node_degree_to": 0.021779144072423026,
+    "node_degree_from": 0.01889964329372261,
+    "log_sample_count": 0.010895917015790808,
+    "sample_count": 0.010851867969026516,
+    "is_weekend": 0.005581025436202508,
+    "edge_betweenness": 0.003923780038534773,
+    "waterway_type": 0.0034943047472241967,
+    "is_peak_hour": 0.0021401267404127567,
+    "narrow_x_peak": 0.0009251242405655538
   },
   "model_comparison": {
     "xgboost": {
-      "mae": 14.134458475655,
-      "rmse": 31.864536508718775,
-      "r2": 0.3835708524890563,
-      "mape": 52.10740770136491,
-      "train_time": 14.060468912124634
+      "mae": 11.760691296976198,
+      "rmse": 25.271926423764302,
+      "r2": 0.3162997329992384,
+      "mape": 52.020315915066874,
+      "train_time": 53.74397563934326
     },
     "lightgbm": {
-      "mae": 14.203430344449654,
-      "rmse": 32.35273188902127,
-      "r2": 0.3645375807564264,
-      "mape": 51.82574062663108,
-      "train_time": 18.494433164596558
+      "mae": 11.673339675258566,
+      "rmse": 24.332569091046146,
+      "r2": 0.3661813954900801,
+      "mape": 50.79335996427373,
+      "train_time": 28.853091716766357
     },
     "lightgbm_tweedie": {
-      "mae": 14.183725097254499,
-      "rmse": 31.349127621859978,
-      "r2": 0.40335105900402635,
-      "mape": 55.66974989464954,
-      "train_time": 17.96146249771118
+      "mae": 11.647806895879762,
+      "rmse": 24.56740812169951,
+      "r2": 0.353888109410037,
+      "mape": 50.44021940636042,
+      "train_time": 34.342565298080444
     },
     "random_forest": {
-      "mae": 14.153694577856104,
-      "rmse": 32.100471851148384,
-      "r2": 0.37440857549588824,
-      "mape": 52.40546491857542,
-      "train_time": 34.34876489639282
+      "mae": 11.73024927041206,
+      "rmse": 24.98370687083124,
+      "r2": 0.33180564242460586,
+      "mape": 51.64945291154286,
+      "train_time": 29.206201553344727
     },
     "gnn": {
-      "mae": 9.707905633703028,
-      "rmse": 24.8957369194634,
-      "r2": 0.6508040998552217,
-      "mape": 26.89038631042939,
-      "train_time": 40.555365562438965
+      "mae": 8.21059515563349,
+      "rmse": 24.80959303883489,
+      "r2": 0.5574386270253074,
+      "mape": 17.724798813762103,
+      "train_time": 44.42011642456055
     }
   }
 }

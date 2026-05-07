@@ -63,6 +63,7 @@ try:
     import torch.nn as nn
     import torch.nn.functional as F
     HAS_TORCH = True
+    torch.set_num_threads(os.cpu_count() or 4)
 except ImportError:
     HAS_TORCH = False
 
@@ -165,11 +166,14 @@ class AdvancedWeightModel:
         # 去除 avg_speed_diff（由泄漏特征派生）
         # 新增 theoretical_time（物理先验：distance/reported_speed，预测时可用默认速度填充）
         self.feature_names = [
-            'distance', 'theoretical_time', 'avg_reported_speed',
+            'avg_reported_speed', 'std_reported_speed', 'speed_cv',
             'bearing', 'bearing_sin', 'bearing_cos', 'avg_course_change',
-            'is_peak_hour', 'is_weekend', 'waterway_type', 'hour',
+            'std_course_change', 'course_change_x_narrow',
+            'is_peak_hour', 'is_weekend', 'waterway_type',
+            'hour', 'hour_sin', 'hour_cos',
             'node_degree_from', 'node_degree_to', 'edge_betweenness',
-            'sample_count'
+            'sample_count', 'log_sample_count',
+            'narrow_x_peak', 'course_change_x_peak'
         ]
         
         # 检查依赖
@@ -230,32 +234,20 @@ class AdvancedWeightModel:
         edge_segments = self._map_segments_to_edges(graph, segment_features)
         
         # 5. 构建训练数据（边×时段聚合，与预测对齐）
-        logger.info("构建训练数据集（边×时段聚合）...")
-        X, y, edge_period_info = self._build_training_data(edge_segments, graph)
-        self.edge_period_info = edge_period_info  # 保存供预测时使用
-        
-        # 6. 对目标变量做 log 变换（解决极度偏斜分布）
-        logger.info("对目标变量做 log1p 变换...")
-        y_log = np.log1p(y)
-        self.y_original = y  # 保存原始值用于评估和 LightGBM 变体
-        print(f"  原始 y: min={y.min():.1f}, max={y.max():.1f}, mean={y.mean():.1f}, std={y.std():.1f}")
-        print(f"  log(y): min={y_log.min():.3f}, max={y_log.max():.3f}, mean={y_log.mean():.3f}, std={y_log.std():.3f}")
-        
-        # 7. 训练并对比模型（传递 y_original 供 LightGBM 变体使用）
+        logger.info("构建训练数据集（边×时段聚合，目标=time_ratio）...")
+        X, y_ratio, y_time, theoretical_times, edge_period_info = self._build_training_data(edge_segments, graph)
+        self.edge_period_info = edge_period_info
+        self._edge_theoretical_times_full = theoretical_times
+
+        print(f"  time_ratio: min={y_ratio.min():.3f}, max={y_ratio.max():.3f}, "
+              f"mean={y_ratio.mean():.3f}, std={y_ratio.std():.3f}")
+
         logger.info("训练并对比模型...")
-        results = self._train_and_compare_models(X, y_log, y, models_to_compare, graph, edge_segments, use_grid_search)
-        
-        # 8. 选择最优模型
+        results = self._train_and_compare_models(X, y_ratio, y_time, theoretical_times,
+                                                  models_to_compare, graph, edge_segments, use_grid_search)
+
         self._select_best_model(results)
-        
-        # 8.5 记录是否使用 log 变换（供保存/加载后预测使用）
-        self._gnn_use_log_transform = self.best_model_name not in ('lightgbm_tweedie',)
-        
-        # 8.6 计算并保存 Duan smearing 校正因子（用于 log 模型的预测反变换）
-        if self.best_model_name not in ('lightgbm_tweedie',):
-            self._compute_duan_smearing_factor(X, y_log)
-        
-        # 9. 预测边权重
+
         logger.info("预测边权重...")
         self._predict_all_weights(edge_segments, graph)
         
@@ -526,192 +518,209 @@ class AdvancedWeightModel:
         
         return nearest_node
     
-    def _build_training_data(self, edge_segments: Dict, graph) -> Tuple[np.ndarray, np.ndarray, Dict]:
+    def _build_training_data(self, edge_segments: Dict, graph) -> Tuple:
         """
-        构建边×时段级别的训练数据（与预测时输入对齐）
-        
-        核心改造：每个样本 = 一条边×一个时段的聚合统计，
-        而非单段轨迹。这样训练和预测使用相同的特征空间，
-        避免"训练用单段特征、预测用均值特征"的分布偏移问题。
-        
+        构建边×时段级别的训练数据
+
+        核心改造：目标变量改为 time_ratio = actual_time / theoretical_time，
+        归一化掉距离/速度主效应，让模型专注学习动态偏差。
+        移除泄漏特征（theoretical_time, distance），
+        新增交互特征（speed_cv, narrow_x_peak, course_change_x_peak）。
+
         Returns:
-            X: 特征矩阵 (n_edge_period_samples, n_features)
-            y: 目标值 (avg_travel_time per edge×period)
-            edge_period_info: {(edge_key, period_name): {hour, sample_count, ...}}
+            X: 特征矩阵
+            y_ratio: time_ratio 目标值
+            y_time: 原始 travel_time（用于评估）
+            theoretical_times: 每个样本对应的 theoretical_time
+            edge_period_info: 边×时段信息
         """
         X_list = []
-        y_list = []
+        y_ratio_list = []
+        y_time_list = []
+        tt_list = []
         edge_period_info = {}
-        
+        self._edge_theoretical_times = {}
+
         for edge_key, segments in edge_segments.items():
             if len(segments) < 2:
                 continue
-            
+
             from_node, to_node = edge_key
             waterway_type = self._get_edge_waterway_type(from_node, to_node, graph)
             node_degree_from = self.node_degrees.get(from_node, 0)
             node_degree_to = self.node_degrees.get(to_node, 0)
             betweenness = self.edge_betweenness.get(edge_key, 0)
-            
-            # 边级静态特征（不随时段变化）
+
             distances = [s['distance'] for s in segments]
             avg_distance = np.mean(distances)
             avg_bearing = np.mean([s['bearing'] for s in segments])
             bearing_rad = np.deg2rad(avg_bearing)
             avg_course_change = np.mean([s['course_change'] for s in segments])
-            
-            # 按时段聚合
+
+            reported_speeds_all = [s['reported_speed'] for s in segments]
+            avg_reported_speed_edge = np.mean(reported_speeds_all)
+            speed_ms = max(avg_reported_speed_edge, 0.5) * 0.5144
+            theoretical_time = avg_distance / speed_ms
+            self._edge_theoretical_times[edge_key] = theoretical_time
+
             period_groups = defaultdict(list)
             for seg in segments:
                 period_groups[seg['time_period']].append(seg)
-            
+
             for period_name, period_segs in period_groups.items():
                 time_diffs = [s['time_diff'] for s in period_segs]
                 reported_speeds = [s['reported_speed'] for s in period_segs]
-                
-                # 时段内的聚合特征
+                course_changes = [s['course_change'] for s in period_segs]
+
                 avg_reported_speed = np.mean(reported_speeds)
+                std_reported_speed = np.std(reported_speeds) if len(reported_speeds) > 1 else 0
                 avg_travel_time = np.mean(time_diffs)
-                # y上限截断：超过1小时的视为停泊/异常
                 avg_travel_time = min(avg_travel_time, 3600)
-                # 物理先验特征：基于报告速度的理论耗时（非泄漏，预测时可用默认速度填充）
-                speed_ms = max(avg_reported_speed, 0.5) * 0.5144  # 节→m/s，最低0.5节
-                theoretical_time = avg_distance / speed_ms if speed_ms > 0 else avg_distance / 2.57
-                sample_count = len(period_segs)
-                
-                # 用时段的代表性小时（中位数）作为 hour 特征
+
+                time_ratio = avg_travel_time / max(theoretical_time, 1.0)
+                time_ratio = np.clip(time_ratio, 0.1, 20.0)
+
+                speed_cv = std_reported_speed / max(avg_reported_speed, 0.1)
+                std_course_change = np.std(course_changes) if len(course_changes) > 1 else 0
+                course_change_x_narrow = avg_course_change * waterway_type
+
                 hours = [s['hour'] for s in period_segs]
                 rep_hour = int(np.median(hours))
                 is_peak = 1 if rep_hour in self.peak_hours else 0
-                is_weekend_mode = 1 if sum(s['is_weekend'] for s in period_segs) > sample_count / 2 else 0
-                
+                is_weekend_mode = 1 if sum(s['is_weekend'] for s in period_segs) > len(period_segs) / 2 else 0
+                hour_rad = np.deg2rad(rep_hour * 15)
+
+                narrow_x_peak = waterway_type * is_peak
+                course_change_x_peak = avg_course_change * is_peak
+
+                sample_count = len(period_segs)
+
                 features = [
-                    avg_distance,
-                    theoretical_time,
                     avg_reported_speed,
+                    std_reported_speed,
+                    speed_cv,
                     avg_bearing,
                     np.sin(bearing_rad),
                     np.cos(bearing_rad),
                     avg_course_change,
+                    std_course_change,
+                    course_change_x_narrow,
                     is_peak,
                     is_weekend_mode,
                     waterway_type,
                     rep_hour,
+                    np.sin(hour_rad),
+                    np.cos(hour_rad),
                     node_degree_from,
                     node_degree_to,
                     betweenness,
-                    sample_count
+                    sample_count,
+                    np.log1p(sample_count),
+                    narrow_x_peak,
+                    course_change_x_peak
                 ]
-                
+
                 X_list.append(features)
-                y_list.append(avg_travel_time)
-                
+                y_ratio_list.append(time_ratio)
+                y_time_list.append(avg_travel_time)
+                tt_list.append(theoretical_time)
+
                 edge_period_info[(edge_key, period_name)] = {
                     'hour': rep_hour,
                     'sample_count': sample_count,
                     'avg_travel_time': avg_travel_time,
+                    'time_ratio': time_ratio,
+                    'theoretical_time': theoretical_time,
                     'time_period': period_name,
                 }
-        
+
         X = np.array(X_list)
-        y = np.array(y_list)
-        
+        y_ratio = np.array(y_ratio_list)
+        y_time = np.array(y_time_list)
+        theoretical_times = np.array(tt_list)
+
         print(f"  训练样本数: {len(X):,} (边×时段聚合)")
         print(f"  特征维度: {X.shape[1]}")
-        
-        return X, y, edge_period_info
+        print(f"  time_ratio: min={y_ratio.min():.3f}, max={y_ratio.max():.3f}, "
+              f"mean={y_ratio.mean():.3f}, std={y_ratio.std():.3f}")
+
+        return X, y_ratio, y_time, theoretical_times, edge_period_info
     
     # ==================== 模型训练与对比 ====================
     
-    def _train_and_compare_models(self, X: np.ndarray, y: np.ndarray, y_original: np.ndarray,
+    def _train_and_compare_models(self, X: np.ndarray, y_ratio: np.ndarray,
+                                   y_time: np.ndarray, theoretical_times: np.ndarray,
                                    models: List[str], graph, edge_segments,
                                    use_grid_search: bool = True) -> Dict[str, ModelResult]:
-        """
-        训练并对比多个模型
-        
-        Args:
-            X: 特征矩阵
-            y: 目标值（log1p 变换后）
-            y_original: 原始目标值（供 LightGBM reg_sqrt/tweedie 使用）
-            models: 要训练的模型列表
-            graph: 网络图
-            edge_segments: 边段数据
-            use_grid_search: 是否使用网格搜索调参
-        """
+        """训练并对比多个模型（统一使用 time_ratio 作为目标）"""
         results = {}
-        
-        # 确保 X 是 numpy array（避免 LightGBM feature names 警告）
+
         if hasattr(X, 'values'):
             X = X.values
-        if hasattr(y, 'values'):
-            y = y.values
-        if hasattr(y_original, 'values'):
-            y_original = y_original.values
-        
-        # 划分数据（使用相同随机种子确保各模型可比）
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
+        if hasattr(y_ratio, 'values'):
+            y_ratio = y_ratio.values
+
+        X_train, X_test, y_ratio_train, y_ratio_test = train_test_split(
+            X, y_ratio, test_size=0.2, random_state=42
         )
-        # 对 y_original 做相同划分
-        _, _, y_orig_train, y_orig_test = train_test_split(
-            X, y_original, test_size=0.2, random_state=42
+        _, _, y_time_train, y_time_test = train_test_split(
+            X, y_time, test_size=0.2, random_state=42
         )
-        
-        # 标准化（部分模型需要）
+        _, _, tt_train, tt_test = train_test_split(
+            X, theoretical_times, test_size=0.2, random_state=42
+        )
+
         scaler = StandardScaler()
         X_train_scaled = scaler.fit_transform(X_train)
         X_test_scaled = scaler.transform(X_test)
-        
+
         self.scaler = scaler
         self.use_grid_search = use_grid_search
-        
+        self._tt_test = tt_test
+        self._y_time_test = y_time_test
+
         print(f"\n  训练集: {len(X_train):,} 样本")
         print(f"  测试集: {len(X_test):,} 样本")
         print(f"  网格搜索: {'启用' if use_grid_search else '禁用'}")
         print("\n  " + "-"*60)
-        
-        # 1. XGBoost
+
         if 'xgboost' in models and HAS_XGBOOST:
-            result = self._train_xgboost(X_train, X_test, y_train, y_test)
+            result = self._train_xgboost(X_train, X_test, y_ratio_train, y_ratio_test)
             results['xgboost'] = result
             self._print_result(result)
-        
-        # 2. LightGBM（reg_sqrt 模式，内部 sqrt 变换 + log1p 输入）
+
         if 'lightgbm' in models and HAS_LIGHTGBM:
-            result = self._train_lightgbm(X_train, X_test, y_train, y_test)
+            result = self._train_lightgbm(X_train, X_test, y_ratio_train, y_ratio_test)
             results['lightgbm'] = result
             self._print_result(result)
-        
-        # 3. LightGBM Tweedie（直接用原始 y，适合重尾正偏分布）
+
         if 'lightgbm_tweedie' in models and HAS_LIGHTGBM:
-            result = self._train_lightgbm_tweedie(X_train, X_test, y_orig_train, y_orig_test)
+            result = self._train_lightgbm_tweedie(X_train, X_test, y_ratio_train, y_ratio_test)
             results['lightgbm_tweedie'] = result
             self._print_result(result)
-        
-        # 4. Random Forest
+
         if 'random_forest' in models:
-            result = self._train_random_forest(X_train, X_test, y_train, y_test)
+            result = self._train_random_forest(X_train, X_test, y_ratio_train, y_ratio_test)
             results['random_forest'] = result
             self._print_result(result)
-        
-        # 5. MLP
+
         if 'mlp' in models and HAS_TORCH:
-            result = self._train_mlp(X_train_scaled, X_test_scaled, y_train, y_test)
+            result = self._train_mlp(X_train_scaled, X_test_scaled, y_ratio_train, y_ratio_test)
             results['mlp'] = result
             self._print_result(result)
-        
-        # 6. GNN
+
         if 'gnn' in models and HAS_PYG:
-            result = self._train_gnn(X, y, graph, edge_segments)
+            all_indices = np.arange(len(X))
+            train_indices, test_indices = train_test_split(
+                all_indices, test_size=0.2, random_state=42
+            )
+            result = self._train_gnn(X, y_ratio, graph, edge_segments)
             results['gnn'] = result
             self._print_result(result)
-        
-        # 打印对比表
+
         self._print_comparison_table(results)
-        
-        # 保存模型结果供后续导出
         self._model_results = results
-        
+
         return results
     
     def _train_xgboost(self, X_train, X_test, y_train, y_test) -> ModelResult:
@@ -781,14 +790,14 @@ class AdvancedWeightModel:
         
         train_time = time.time() - start_time
         y_pred = model.predict(X_test)
-        
-        # 保存特征重要性
+        y_pred = np.clip(y_pred, 0.1, 20.0)
+
         self.feature_importance = dict(zip(self.feature_names, model.feature_importances_))
         
         return self._evaluate_model('XGBoost', model, y_test, y_pred, train_time)
     
     def _train_lightgbm(self, X_train, X_test, y_train, y_test) -> ModelResult:
-        """训练 LightGBM（reg_sqrt 模式：内部 sqrt 变换，稳定梯度）"""
+        """训练 LightGBM"""
         start_time = time.time()
         
         # 用 DataFrame 包装，确保训练/预测时特征名一致，避免 sklearn 警告
@@ -813,7 +822,6 @@ class AdvancedWeightModel:
                     'feature_fraction': trial.suggest_float('feature_fraction', 0.5, 1.0),
                     'bagging_fraction': trial.suggest_float('bagging_fraction', 0.5, 1.0),
                     'bagging_freq': 5,
-                    'reg_sqrt': True,  # 内部 sqrt 变换，稳定梯度
                 }
                 candidate = lgb.LGBMRegressor(**params, random_state=42, n_jobs=-1, verbose=-1)
                 scores = cross_val_score(candidate, X_train, y_train, cv=5,
@@ -824,17 +832,12 @@ class AdvancedWeightModel:
                                         sampler=optuna.samplers.TPESampler(seed=42))
             study.optimize(objective, n_trials=30, show_progress_bar=HAS_TQDM)
             best_params = study.best_params
-            best_params['bagging_freq'] = 5  # 确保 bagging_freq 一致
-            best_params['reg_sqrt'] = True  # 确保 reg_sqrt 一致
+            best_params['bagging_freq'] = 5
             print(f"    最佳参数: {best_params}")
             print(f"    最佳 CV 分数: {study.best_value:.4f}")
 
             model = lgb.LGBMRegressor(**best_params, random_state=42, n_jobs=-1, verbose=-1)
             model.fit(X_train, y_train)
-
-            # 交叉验证评估
-            cv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring='r2', n_jobs=-1)
-            print(f"    交叉验证 R2: {cv_scores.mean():.4f} (+/-{cv_scores.std():.4f})")
         elif self.use_grid_search:
             # optuna 未安装，回退到随机搜索
             from sklearn.model_selection import ParameterSampler, cross_val_score
@@ -851,7 +854,6 @@ class AdvancedWeightModel:
                 'feature_fraction': [0.6, 0.8, 1.0],
                 'bagging_fraction': [0.6, 0.8, 1.0],
                 'bagging_freq': [5],
-                'reg_sqrt': [True],
             }
             param_samples = list(ParameterSampler(param_grid, n_iter=25, random_state=42))
             best_score = -np.inf
@@ -866,45 +868,32 @@ class AdvancedWeightModel:
             model = lgb.LGBMRegressor(**best_params, random_state=42, n_jobs=-1, verbose=-1)
             model.fit(X_train, y_train)
             print(f"    最佳参数: {best_params}")
-            cv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring='r2', n_jobs=-1)
-            print(f"    交叉验证 R2: {cv_scores.mean():.4f} (+/-{cv_scores.std():.4f})")
         else:
-            # 默认参数（reg_sqrt 模式）
             model = lgb.LGBMRegressor(
                 n_estimators=100, max_depth=6, learning_rate=0.02,
                 num_leaves=31, min_child_samples=50,
                 reg_alpha=1.0, reg_lambda=1.0, min_split_gain=0.1,
                 feature_fraction=0.8, bagging_fraction=0.8, bagging_freq=5,
-                reg_sqrt=True,
                 random_state=42, n_jobs=-1, verbose=-1
             )
             model.fit(X_train, y_train)
         
         train_time = time.time() - start_time
         y_pred = model.predict(X_test)
-        
-        # 裁剪异常预测值 - 使用更合理的范围
-        y_pred = np.clip(y_pred, 1.0, y_train.max())
-        
-        # 保存特征重要性
+        y_pred = np.clip(y_pred, 0.1, 20.0)
+
         self.feature_importance = dict(zip(self.feature_names, model.feature_importances_))
         
         return self._evaluate_model('LightGBM', model, y_test, y_pred, train_time)
     
     def _train_lightgbm_tweedie(self, X_train, X_test, y_train, y_test) -> ModelResult:
-        """
-        训练 LightGBM Tweedie 回归（直接用原始 y，适合重尾正偏分布）
-        
-        Tweedie 分布 var ∝ mean^p (1<p<2)，天然建模正偏重尾数据，
-        无需 log 变换，预测直接在原始空间，避免反变换偏差。
-        """
+        """训练 LightGBM Tweedie 回归（适合正偏分布的 ratio 目标）"""
         start_time = time.time()
         
         if not isinstance(X_train, pd.DataFrame):
             X_train = pd.DataFrame(X_train, columns=self.feature_names)
             X_test = pd.DataFrame(X_test, columns=self.feature_names)
         
-        # 确保y>0（Tweedie要求）
         y_train_pos = np.maximum(y_train, 0.1)
         
         if self.use_grid_search and HAS_OPTUNA:
@@ -958,15 +947,12 @@ class AdvancedWeightModel:
         train_time = time.time() - start_time
         y_pred = model.predict(X_test)
         
-        # 裁剪到合理范围
-        y_pred = np.clip(y_pred, 0.1, y_train_pos.max())
+        y_pred = np.clip(y_pred, 0.1, 20.0)
         
-        # 保存特征重要性
         if not hasattr(self, 'feature_importance'):
             self.feature_importance = {}
         self.feature_importance_tweedie = dict(zip(self.feature_names, model.feature_importances_))
         
-        # Tweedie 不使用 log 变换，直接在原始空间评估
         return self._evaluate_model('LightGBM-Tweedie', model, y_test, y_pred, train_time,
                                      use_log_transform=False)
     
@@ -1213,7 +1199,9 @@ class AdvancedWeightModel:
         # 先收集有效边（有足够轨迹数据的边），扩展边特征
         valid_edges = []
         edge_features_list = []
-        edge_targets = []
+        edge_targets_ratio = []
+        edge_targets_original_list = []
+        edge_theoretical_times_list = []
         
         for edge_key, segments in edge_segments.items():
             if len(segments) < 2:
@@ -1230,19 +1218,19 @@ class AdvancedWeightModel:
             node_degree_to = self.node_degrees.get(to_node, 0)
             betweenness = self.edge_betweenness.get(edge_key, 0)
             
-            # 物理先验：理论耗时（替代泄漏的 avg_actual_speed）
             speed_ms = max(avg_reported_speed, 0.5) * 0.5144
             theoretical_time = distance / speed_ms
             
             valid_edges.append((from_node, to_node))
-            # 边特征：对齐其他模型的关键非时变特征
             bearing_rad = np.deg2rad(avg_bearing)
             edge_features_list.append([
                 distance, theoretical_time, avg_reported_speed,
                 np.sin(bearing_rad), np.cos(bearing_rad), avg_course_change,
                 waterway_type, node_degree_from, node_degree_to, betweenness
             ])
-            edge_targets.append(avg_time)
+            edge_targets_ratio.append(avg_time / max(theoretical_time, 1e-6))
+            edge_targets_original_list.append(avg_time)
+            edge_theoretical_times_list.append(theoretical_time)
         
         if len(valid_edges) == 0:
             return ModelResult('GNN', 0, float('inf'), float('inf'), 0, 100, None)
@@ -1250,11 +1238,9 @@ class AdvancedWeightModel:
         n_edges = len(valid_edges)
         print(f"\n    [GNN] 有效边数: {n_edges}, 边特征维度: {len(edge_features_list[0])}")
         
-        # 对 GNN 的 edge_targets 做 log 变换（与 X/y 保持一致）
-        if hasattr(self, 'y_original'):
-            edge_targets_log = np.log1p(edge_targets)
-        else:
-            edge_targets_log = edge_targets
+        edge_targets_ratio = np.array(edge_targets_ratio, dtype=np.float64)
+        edge_targets_original = np.array(edge_targets_original_list, dtype=np.float64)
+        edge_theoretical_times = np.array(edge_theoretical_times_list, dtype=np.float64)
         
         # 收集有效边涉及的节点
         valid_nodes = set()
@@ -1291,8 +1277,8 @@ class AdvancedWeightModel:
         edge_index = torch.LongTensor(edge_index_bidir).t().contiguous()
         
         edge_features = torch.FloatTensor(edge_features_list)
-        edge_targets_original = torch.FloatTensor(edge_targets)
-        edge_targets = torch.FloatTensor(edge_targets_log)
+        edge_targets_original_t = torch.FloatTensor(edge_targets_original)
+        edge_targets = torch.FloatTensor(edge_targets_ratio)
         
         # 标准化边特征
         edge_scaler = StandardScaler()
@@ -1429,58 +1415,35 @@ class AdvancedWeightModel:
         # 在测试集上评估
         model.eval()
         with torch.no_grad():
-            y_pred_log = model(node_features, edge_index, edge_features, num_target_edges).numpy()
+            y_pred_ratio = model(node_features, edge_index, edge_features, num_target_edges).numpy()
         
-        # 只用测试集评估
         y_true_test = edge_targets[test_mask].numpy()
-        y_pred_test = y_pred_log[test_mask.numpy()]
+        y_pred_test = y_pred_ratio[test_mask.numpy()]
+        y_pred_test = np.clip(y_pred_test, 0.1, 20.0)
+        
+        y_true_time_test = edge_targets_original_t[test_mask].numpy()
+        gnn_tt_test = edge_theoretical_times[test_mask.numpy()]
         
         print(f"    GNN 训练集 loss: {best_train_loss:.4f}, 测试边数: {test_mask.sum().item()}")
         
-        # 传入 log 空间的值，由 _evaluate_model 统一反变换
-        return self._evaluate_model('GNN', model, y_true_test, y_pred_test, train_time)
+        return self._evaluate_model('GNN', model, y_true_test, y_pred_test, train_time,
+                                     y_true_time=y_true_time_test,
+                                     theoretical_times_test=gnn_tt_test)
     
     def _compute_duan_smearing_factor(self, X: np.ndarray, y_log: np.ndarray):
-        """
-        计算 Duan (1983) smearing 校正因子
-        
-        当 log(y) 模型预测 ŷ_log 后，expm1(ŷ_log) 系统性低估 E[y]，
-        校正方法：E[y|x] = expm1(ŷ_log) × S，其中 S = mean(exp(residual_i))
-        """
-        try:
-            # 用训练好的最优模型在全数据上预测
-            if self.best_model_name == 'gnn':
-                # GNN 不走 tabular predict，无法在 X 上直接预测，跳过 Duan 校正
-                self._duan_smearing_factor = 1.0
-                print(f"  Duan smearing 校正因子: 1.0000 (GNN 模型跳过)")
-                return
-            elif self.best_model_name == 'mlp':
-                X_scaled = self.scaler.transform(X)
-                with torch.no_grad():
-                    y_pred_log = self.best_model(torch.FloatTensor(X_scaled)).numpy().flatten()
-            elif self.best_model_name in ('lightgbm', 'lightgbm_tweedie'):
-                X_df = pd.DataFrame(X, columns=self.feature_names)
-                y_pred_log = self.best_model.predict(X_df)
-            else:
-                y_pred_log = self.best_model.predict(X)
-            
-            residuals = y_log - y_pred_log
-            self._duan_smearing_factor = float(np.mean(np.exp(residuals)))
-            print(f"  Duan smearing 校正因子: {self._duan_smearing_factor:.4f}")
-        except Exception as e:
-            logger.warning("Duan smearing 因子计算失败: %s，使用默认值 1.0", e)
-            self._duan_smearing_factor = 1.0
+        """已弃用：time_ratio 目标无需 Duan smearing 校正"""
+        self._duan_smearing_factor = 1.0
     
     def _evaluate_model(self, name: str, model, y_true, y_pred, train_time: float,
-                         use_log_transform: bool = True) -> ModelResult:
+                         use_log_transform: bool = False,
+                         y_true_time: np.ndarray = None,
+                         theoretical_times_test: np.ndarray = None) -> ModelResult:
         """
-        评估模型（在原始空间计算指标）
+        评估模型（在 ratio 空间和原始时间空间同时计算指标）
         
-        Args:
-            use_log_transform: y_true/y_pred 是否在 log1p 空间（需要反变换）。
-                               Tweedie 等直接在原始空间训练的模型传 False。
+        y_true/y_pred 均为 time_ratio 空间。
+        通过 theoretical_times_test 和 y_true_time 转换到原始时间空间评估。
         """
-        # 统一转为 numpy array（GNN 可能传入 torch tensor）
         if HAS_TORCH and isinstance(y_true, torch.Tensor):
             y_true = y_true.detach().cpu().numpy()
         if HAS_TORCH and isinstance(y_pred, torch.Tensor):
@@ -1488,36 +1451,28 @@ class AdvancedWeightModel:
         y_true = np.asarray(y_true, dtype=np.float64)
         y_pred = np.asarray(y_pred, dtype=np.float64)
         
-        r2_log = None
+        r2_ratio = r2_score(y_true, y_pred)
+        mae_ratio = mean_absolute_error(y_true, y_pred)
         
-        if use_log_transform and hasattr(self, 'y_original'):
-            # === log 空间 R² ===
-            r2_log = r2_score(y_true, y_pred)
+        tt_test = theoretical_times_test if theoretical_times_test is not None else getattr(self, '_tt_test', None)
+        y_time_test = y_true_time if y_true_time is not None else getattr(self, '_y_time_test', None)
+        
+        if tt_test is not None and y_time_test is not None and len(tt_test) == len(y_true):
+            y_pred_time = y_pred * tt_test
+            y_true_time = y_time_test
             
-            # === Duan smearing 校正（修正 expm1 反变换的系统性低估） ===
-            # Duan (1983): E[y|x] = exp(ŷ) * mean(exp(residual_i))
-            residuals = y_true - y_pred
-            smearing_factor = np.mean(np.exp(residuals))
+            mae = mean_absolute_error(y_true_time, y_pred_time)
+            rmse = np.sqrt(mean_squared_error(y_true_time, y_pred_time))
+            r2 = r2_score(y_true_time, y_pred_time)
             
-            # 裁剪 log 空间的值防止 expm1 溢出
-            y_pred_clipped = np.clip(y_pred, -700, 88)
-            y_true_clipped = np.clip(y_true, -700, 88)
-            
-            # 反变换：Duan 校正 vs 普通 expm1
-            y_true_orig = np.expm1(y_true_clipped)
-            y_pred_orig_naive = np.expm1(y_pred_clipped)
-            y_pred_orig = y_pred_orig_naive * smearing_factor  # Duan 校正
+            mask = y_true_time != 0
+            mape = np.mean(np.abs((y_true_time[mask] - y_pred_time[mask]) / y_true_time[mask])) * 100 if mask.any() else 0
         else:
-            y_true_orig = y_true
-            y_pred_orig = y_pred
-        
-        mae = mean_absolute_error(y_true_orig, y_pred_orig)
-        rmse = np.sqrt(mean_squared_error(y_true_orig, y_pred_orig))
-        r2 = r2_score(y_true_orig, y_pred_orig)
-        
-        # MAPE
-        mask = y_true_orig != 0
-        mape = np.mean(np.abs((y_true_orig[mask] - y_pred_orig[mask]) / y_true_orig[mask])) * 100 if mask.any() else 0
+            mae = mae_ratio
+            rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+            r2 = r2_ratio
+            mask = y_true != 0
+            mape = np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100 if mask.any() else 0
         
         return ModelResult(
             model_name=name,
@@ -1528,7 +1483,7 @@ class AdvancedWeightModel:
             mape=mape,
             model=model,
             predictions=y_pred,
-            r2_log=r2_log,
+            r2_log=r2_ratio,
             use_log_transform=use_log_transform
         )
     
@@ -1625,8 +1580,9 @@ class AdvancedWeightModel:
             bearing_rad = np.deg2rad(avg_bearing)
             avg_course_change = np.mean([s['course_change'] for s in segments])
             avg_reported_speed = np.mean([s['reported_speed'] for s in segments])
+            std_reported_speed = np.std([s['reported_speed'] for s in segments]) if len(segments) > 1 else 0
+            speed_cv = std_reported_speed / max(avg_reported_speed, 0.1)
             total_sample_count = len(segments)
-            # 物理先验：理论耗时（非泄漏，预测时可用默认速度填充）
             speed_ms = max(avg_reported_speed, 0.5) * 0.5144
             theoretical_time = avg_distance / speed_ms
             
@@ -1643,10 +1599,11 @@ class AdvancedWeightModel:
                 'hourly': {},
                 'period': {},
                 'overall_avg': overall_avg,
+                'theoretical_time': theoretical_time,
                 'static_features': {
-                    'avg_distance': avg_distance,
-                    'theoretical_time': theoretical_time,
                     'avg_reported_speed': avg_reported_speed,
+                    'std_reported_speed': std_reported_speed,
+                    'speed_cv': speed_cv,
                     'avg_bearing': avg_bearing,
                     'bearing_sin': np.sin(bearing_rad),
                     'bearing_cos': np.cos(bearing_rad),
@@ -1680,22 +1637,30 @@ class AdvancedWeightModel:
                     is_weekend = 1 if len(weekend_segs) > len(period_segs) / 2 else 0
                     
                     sf = edge_empirical[edge_key]['static_features']
+                    hour_rad = np.deg2rad(hour * 15)
                     features = [
-                        sf['avg_distance'],
-                        sf['theoretical_time'],
                         sf['avg_reported_speed'],
+                        sf['std_reported_speed'],
+                        sf['speed_cv'],
                         sf['avg_bearing'],
                         sf['bearing_sin'],
                         sf['bearing_cos'],
                         sf['avg_course_change'],
+                        0,
+                        sf['avg_course_change'] * sf['waterway_type'],
                         is_peak,
                         is_weekend,
                         sf['waterway_type'],
                         hour,
+                        np.sin(hour_rad),
+                        np.cos(hour_rad),
                         sf['node_degree_from'],
                         sf['node_degree_to'],
                         sf['edge_betweenness'],
-                        sf['sample_count']
+                        sf['sample_count'],
+                        np.log1p(sf['sample_count']),
+                        sf['waterway_type'] * is_peak,
+                        sf['avg_course_change'] * is_peak
                     ]
                     model_predict_features.append(features)
                     model_predict_keys.append((edge_key, hour))
@@ -1716,25 +1681,32 @@ class AdvancedWeightModel:
             
             for hour in range(24):
                 is_peak = 1 if hour in self.peak_hours else 0
-                # 无数据边：用默认速度计算理论耗时
-                default_speed_ms = 2.57  # 5节 ≈ 2.57 m/s
+                default_speed_ms = 2.57
                 theoretical_time_no_data = dist / default_speed_ms
+                hour_rad = np.deg2rad(hour * 15)
                 features = [
-                    dist,       # distance
-                    theoretical_time_no_data,  # theoretical_time
-                    5.0,        # avg_reported_speed（默认5节）
+                    5.0,
+                    0.0,
+                    0.0,
                     avg_bearing,
                     np.sin(bearing_rad),
                     np.cos(bearing_rad),
-                    0,          # avg_course_change（未知）
+                    0,
+                    0,
+                    0,
                     is_peak,
-                    0,          # is_weekend（默认）
+                    0,
                     waterway_type,
                     hour,
+                    np.sin(hour_rad),
+                    np.cos(hour_rad),
                     node_degree_from,
                     node_degree_to,
                     betweenness,
-                    0           # sample_count
+                    0,
+                    0,
+                    waterway_type * is_peak,
+                    0
                 ]
                 model_predict_features.append(features)
                 model_predict_keys.append(((from_node, to_node), hour))
@@ -1748,9 +1720,6 @@ class AdvancedWeightModel:
         if len(model_predict_features) > 0:
             X_model = np.array(model_predict_features, dtype=np.float64)
             
-            # 判断最优模型是否使用 log 变换
-            best_uses_log = self.best_model_name not in ('lightgbm_tweedie',)
-            
             if self.best_model_name == 'mlp':
                 X_scaled = self.scaler.transform(X_model)
                 with torch.no_grad():
@@ -1761,19 +1730,24 @@ class AdvancedWeightModel:
             else:
                 preds = self.best_model.predict(X_model)
             
-            # 反变换：log 空间 → 原始空间（Duan 校正）
-            if best_uses_log and hasattr(self, 'y_original'):
-                # Duan smearing 校正
-                if hasattr(self, '_duan_smearing_factor'):
-                    preds = np.expm1(np.clip(preds, -700, 88)) * self._duan_smearing_factor
-                else:
-                    preds = np.expm1(np.clip(preds, -700, 88))
-            preds = np.maximum(0.0, preds)
+            preds = np.clip(preds, 0.1, 20.0)
             
+            # Convert ratio predictions to travel time: predicted_time = ratio * theoretical_time
             for i, (edge_key, hour) in enumerate(model_predict_keys):
-                model_predictions[(edge_key, hour)] = float(preds[i])
+                tt = edge_empirical.get(edge_key, {}).get('theoretical_time')
+                if tt is None:
+                    from_node, to_node = edge_key
+                    if graph.has_edge(from_node, to_node):
+                        u_attr = graph.nodes[from_node]
+                        v_attr = graph.nodes[to_node]
+                        dist = haversine_distance(u_attr['lat'], u_attr['lon'], v_attr['lat'], v_attr['lon'])
+                        tt = dist / 2.57
+                    else:
+                        tt = 100.0
+                model_predictions[(edge_key, hour)] = float(preds[i]) * tt
             
-            print(f"  模型预测完成，范围: [{preds.min():.1f}, {preds.max():.1f}]秒")
+            pred_times = np.array(list(model_predictions.values()))
+            print(f"  模型预测完成，范围: [{pred_times.min():.1f}, {pred_times.max():.1f}]秒")
         
         # ===== 阶段3：组装边特征 =====
         n_edges = 0
@@ -2002,13 +1976,14 @@ class AdvancedWeightModel:
         with torch.no_grad():
             predictions = self.best_model(node_features, edge_index, edge_features_tensor, n_edges).numpy()
         
-        # 反变换到原始空间（Duan 校正）
-        gnn_use_log = getattr(self, '_gnn_use_log_transform', hasattr(self, 'y_original'))
-        if gnn_use_log:
-            predictions = np.expm1(np.clip(predictions, -700, 88))
-            if hasattr(self, '_duan_smearing_factor'):
-                predictions = predictions * self._duan_smearing_factor
-        predictions = np.maximum(0.0, predictions)
+        # Convert ratio predictions to travel time
+        predictions = np.maximum(predictions, 0.1)
+        
+        # Get theoretical times for each edge
+        for i, (u, v, segments) in enumerate(valid_edges):
+            edge_key = (u, v)
+            tt = self._edge_theoretical_times.get(edge_key, 100.0)
+            predictions[i] = predictions[i] * tt
         
         # 存储结果（混合策略）
         n_model_used = 0
@@ -2255,7 +2230,31 @@ class AdvancedWeightModel:
                 # 水域类型分布
                 narrow_count = sum(1 for f in self.edge_features.values() if f.get('waterway_type') == 'narrow')
                 f.write(f"狭窄水道边数: {narrow_count} ({narrow_count/len(self.edge_features)*100:.1f}%)\n")
-                f.write(f"开阔海面边数: {len(self.edge_features) - narrow_count} ({(1-narrow_count/len(self.edge_features))*100:.1f}%)\n")
+                f.write(f"开阔海面边数: {len(self.edge_features) - narrow_count} ({(1-narrow_count/len(self.edge_features))*100:.1f}%)\n\n")
+            
+            # 多模型对比详情
+            if hasattr(self, '_model_results') and self._model_results:
+                f.write("-"*80 + "\n")
+                f.write("多模型对比评估\n")
+                f.write("-"*80 + "\n\n")
+                f.write(f"{'模型':<20s} {'MAE':>10s} {'RMSE':>10s} {'R²':>10s} {'MAPE(%)':>10s} {'训练时间(s)':>12s}\n")
+                f.write("-"*72 + "\n")
+                for name, result in self._model_results.items():
+                    best_mark = " ★" if name == self.best_model_name else ""
+                    f.write(f"{name+best_mark:<20s} {result.mae:>10.4f} {result.rmse:>10.4f} {result.r2:>10.4f} {result.mape:>10.2f} {result.train_time:>12.2f}\n")
+                f.write("-"*72 + "\n")
+                f.write("★ 标记为最优模型\n\n")
+            
+            # 特征重要性 Top10
+            if hasattr(self, 'feature_importance') and self.feature_importance:
+                f.write("-"*80 + "\n")
+                f.write("特征重要性 Top10\n")
+                f.write("-"*80 + "\n\n")
+                sorted_fi = sorted(self.feature_importance.items(), key=lambda x: x[1], reverse=True)[:10]
+                f.write(f"{'排名':<6s} {'特征名':<30s} {'重要性':>10s}\n")
+                f.write("-"*48 + "\n")
+                for rank, (feat, imp) in enumerate(sorted_fi, 1):
+                    f.write(f"{rank:<6d} {feat:<30s} {imp:>10.6f}\n")
         
         print(f"  模型报告: {report_path}")
         
@@ -2336,13 +2335,9 @@ class AdvancedWeightModel:
             'best_model_name': self.best_model_name,
             'feature_names': self.feature_names,
             'scaler': getattr(self, 'scaler', None),
-            'y_original_stats': {
-                'min': float(self.y_original.min()) if hasattr(self, 'y_original') else None,
-                'max': float(self.y_original.max()) if hasattr(self, 'y_original') else None,
-                'mean': float(self.y_original.mean()) if hasattr(self, 'y_original') else None,
-                'std': float(self.y_original.std()) if hasattr(self, 'y_original') else None,
-            } if hasattr(self, 'y_original') else None,
-            'duan_smearing_factor': getattr(self, '_duan_smearing_factor', None),
+            'y_original_stats': None,
+            'duan_smearing_factor': getattr(self, '_duan_smearing_factor', 1.0),
+            'edge_theoretical_times': getattr(self, '_edge_theoretical_times', {}),
             'node_degrees': getattr(self, 'node_degrees', None),
             'edge_betweenness': getattr(self, 'edge_betweenness', None),
             'node_waterway_types': getattr(self, 'node_waterway_types', None),
@@ -2389,7 +2384,8 @@ class AdvancedWeightModel:
         self.best_model_name = model_data['best_model_name']
         self.feature_names = model_data['feature_names']
         self.scaler = model_data.get('scaler')
-        self._duan_smearing_factor = model_data.get('duan_smearing_factor')
+        self._duan_smearing_factor = model_data.get('duan_smearing_factor', 1.0)
+        self._edge_theoretical_times = model_data.get('edge_theoretical_times', {})
         self.node_degrees = model_data.get('node_degrees', {})
         self.edge_betweenness = model_data.get('edge_betweenness', {})
         self.node_waterway_types = model_data.get('node_waterway_types', {})
@@ -2557,3 +2553,70 @@ class AdvancedWeightModel:
             return peak_avg / off_peak_avg
         
         return None
+
+
+if __name__ == '__main__':
+    import sys
+    import os
+    import networkx as nx
+    
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    
+    from data_preprocessor import DataPreprocessor
+    
+    print("=" * 60)
+    print("Task5: 动态路段耗时权重建模 (time_ratio 改进版)")
+    print("=" * 60)
+    
+    preprocessor = DataPreprocessor()
+
+    cleaned_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'output', 'cleaned_data.csv')
+    if os.path.exists(cleaned_path):
+        print(f"Loading cleaned data from {cleaned_path}...")
+        cleaned_df = pd.read_csv(cleaned_path)
+        cleaned_df['时间'] = pd.to_datetime(cleaned_df['时间'])
+        print(f"Loaded {len(cleaned_df)} rows")
+    else:
+        print("Cleaned data not found, running preprocessing...")
+        data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Data')
+        file_paths = [
+            os.path.join(data_dir, '基于海量轨迹数据的船舶智能导航路径规划数据集构建与应用1_20260401204631.xlsx'),
+            os.path.join(data_dir, '基于海量轨迹数据的船舶智能导航路径规划数据集构建与应用2_20260401204651.xlsx')
+        ]
+        cleaned_df = preprocessor.load_data(file_paths)
+        if cleaned_df is not None:
+            cleaned_df = preprocessor.preprocess()
+    
+    topo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'output', 'waterway_topology.json')
+    if not os.path.exists(topo_path):
+        print(f"ERROR: {topo_path} not found. Run topology builder first.")
+        sys.exit(1)
+
+    print(f"Loading topology from {topo_path}...")
+    with open(topo_path, 'r', encoding='utf-8') as f:
+        topo_data = json.load(f)
+
+    graph = nx.DiGraph()
+    for node in topo_data['nodes']:
+        graph.add_node(node['id'], **{k: v for k, v in node.items() if k != 'id'})
+    for edge in topo_data['edges']:
+        graph.add_edge(edge['from'], edge['to'], **{k: v for k, v in edge.items() if k not in ('from', 'to')})
+    print(f"Graph loaded: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges")
+    
+    model = AdvancedWeightModel()
+    edge_features = model.build_weights_with_comparison(graph, cleaned_df, use_grid_search=True)
+    
+    output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'output')
+    model.export_results(output_dir)
+    model.save_model(output_dir)
+    model.export_model_metadata(output_dir)
+    
+    print("\n" + "=" * 60)
+    print("特征重要性分布:")
+    if hasattr(model, 'feature_importance') and model.feature_importance:
+        total = sum(model.feature_importance.values())
+        for feat, imp in sorted(model.feature_importance.items(), key=lambda x: x[1], reverse=True):
+            pct = imp / total * 100 if total > 0 else 0
+            bar = '#' * int(pct)
+            print(f"  {feat:<25} {pct:>6.1f}% {bar}")
+    print("=" * 60)

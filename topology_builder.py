@@ -136,6 +136,7 @@ class TopologyBuilder:
             edges.append({
                 'from_node': n1, 'to_node': n2, 'count': a['count'],
                 'ship_count': len(a['ships']),
+                'ships': a['ships'],
                 'avg_distance': a['total_distance'] / a['count'] if a['count'] else 0,
                 'avg_time': a['total_time'] / a['count'] if a['count'] else 0,
                 'avg_speed': np.mean(a['speeds']) if a['speeds'] else 0,
@@ -317,6 +318,7 @@ class TopologyBuilder:
             self.graph.add_edge(e['from_node'], e['to_node'],
                                 weight=e['count'],
                                 ship_count=e['ship_count'],
+                                ships=e.get('ships', set()),
                                 avg_distance=e['avg_distance'],
                                 avg_time=e['avg_time'],
                                 avg_speed=e['avg_speed'],
@@ -362,13 +364,11 @@ class TopologyBuilder:
                     if neighbor != main:
                         ed = self.graph.edges[nid, neighbor]
                         if self.graph.has_edge(main, neighbor):
-                            # 合并边属性
                             existing = self.graph.edges[main, neighbor]
                             existing['weight'] += ed['weight']
-                            existing['ship_count'] = len(
-                                set([f"ship_{i}" for i in range(existing.get('ship_count', 0))]) |
-                                set([f"ship_{i}" for i in range(ed.get('ship_count', 0))])
-                            )
+                            merged_ships = existing.get('ships', set()) | ed.get('ships', set())
+                            existing['ships'] = merged_ships
+                            existing['ship_count'] = len(merged_ships)
                         else:
                             self.graph.add_edge(main, neighbor, **ed)
                 self.graph.remove_node(nid)

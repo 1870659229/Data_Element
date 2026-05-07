@@ -1,7 +1,7 @@
 {
   "success": true,
-  "timestamp": "2026-04-28T23:56:45.959377",
-  "departure_time": "2026-04-28T08:00:45.951282",
+  "timestamp": "2026-05-06T17:47:37.570103",
+  "departure_time": "2026-05-06T08:00:37.559067",
   "ship": {
     "name": "模板_中型货船",
     "mmsi": "",
@@ -15,63 +15,312 @@
     "risk_level": "中风险",
     "maneuverability": 0.625
   },
-  "start_node": 256,
-  "end_node": 1723,
+  "start_node": 165,
+  "end_node": 1884,
   "recommended_path": {
-    "type": "安全优先",
+    "type": "通航频次最高",
     "nodes": [
-      256,
-      1706,
-      1723
+      165,
+      1801,
+      1854,
+      1875,
+      1879,
+      1884
     ],
     "edges": [
       [
-        256,
-        1706
+        165,
+        1801
       ],
       [
-        1706,
-        1723
+        1801,
+        1854
+      ],
+      [
+        1854,
+        1875
+      ],
+      [
+        1875,
+        1879
+      ],
+      [
+        1879,
+        1884
       ]
     ],
-    "total_distance_km": 20.91,
-    "total_time_min": 84.7,
-    "avg_speed_knots": 8.0,
-    "risk_score": 26.5,
-    "safety_score": 73.5,
-    "total_frequency": 0,
+    "total_distance_km": 9.59,
+    "total_time_min": 40.03,
+    "avg_speed_knots": 7.76,
+    "risk_score": 34.11,
+    "safety_score": 65.89,
+    "total_frequency": 11,
     "constraints_met": true,
-    "waypoint_count": 2,
+    "waypoint_count": 5,
     "waypoints": [
       {
         "sequence": 1,
-        "from_node": 256,
-        "to_node": 1706,
-        "distance": 1966.5555159009655,
-        "time": 477.8760487706468,
-        "risk": 25.0,
+        "from_node": 165,
+        "to_node": 1801,
+        "distance": 2014.0627621142537,
+        "time": 489.42038348421795,
+        "risk": 23.0,
         "waterway_type": "open"
       },
       {
         "sequence": 2,
-        "from_node": 1706,
-        "to_node": 1723,
-        "distance": 18946.391668986,
-        "time": 4604.002641180502,
-        "risk": 28.0,
+        "from_node": 1801,
+        "to_node": 1854,
+        "distance": 4138.105564945299,
+        "time": 1005.5660879046703,
+        "risk": 23.0,
+        "waterway_type": "open"
+      },
+      {
+        "sequence": 3,
+        "from_node": 1854,
+        "to_node": 1875,
+        "distance": 3319.404188314155,
+        "time": 806.6203801307726,
+        "risk": 20.0,
+        "waterway_type": "open"
+      },
+      {
+        "sequence": 4,
+        "from_node": 1875,
+        "to_node": 1879,
+        "distance": 56.217210665933415,
+        "time": 26.96924514770508,
+        "risk": 40.26333236694336,
+        "waterway_type": "open"
+      },
+      {
+        "sequence": 5,
+        "from_node": 1879,
+        "to_node": 1884,
+        "distance": 59.4824261840436,
+        "time": 73.21002349853515,
+        "risk": 64.28587341308594,
         "waterway_type": "open"
       }
     ]
   },
-  "alternative_paths": [],
+  "alternative_paths": [
+    {
+      "type": "安全优先",
+      "nodes": [
+        165,
+        1801,
+        1803,
+        1854,
+        1875,
+        1879,
+        1884
+      ],
+      "edges": [
+        [
+          165,
+          1801
+        ],
+        [
+          1801,
+          1803
+        ],
+        [
+          1803,
+          1854
+        ],
+        [
+          1854,
+          1875
+        ],
+        [
+          1875,
+          1879
+        ],
+        [
+          1879,
+          1884
+        ]
+      ],
+      "total_distance_km": 9.89,
+      "total_time_min": 41.24,
+      "avg_speed_knots": 7.77,
+      "risk_score": 32.26,
+      "safety_score": 67.74,
+      "total_frequency": 11,
+      "constraints_met": true,
+      "waypoint_count": 6,
+      "waypoints": [
+        {
+          "sequence": 1,
+          "from_node": 165,
+          "to_node": 1801,
+          "distance": 2014.0627621142537,
+          "time": 489.42038348421795,
+          "risk": 23.0,
+          "waterway_type": "open"
+        },
+        {
+          "sequence": 2,
+          "from_node": 1801,
+          "to_node": 1803,
+          "distance": 585.1628845188403,
+          "time": 142.19549098922053,
+          "risk": 23.0,
+          "waterway_type": "open"
+        },
+        {
+          "sequence": 3,
+          "from_node": 1803,
+          "to_node": 1854,
+          "distance": 3852.922780928276,
+          "time": 936.2662278694295,
+          "risk": 23.0,
+          "waterway_type": "open"
+        },
+        {
+          "sequence": 4,
+          "from_node": 1854,
+          "to_node": 1875,
+          "distance": 3319.404188314155,
+          "time": 806.6203801307726,
+          "risk": 20.0,
+          "waterway_type": "open"
+        },
+        {
+          "sequence": 5,
+          "from_node": 1875,
+          "to_node": 1879,
+          "distance": 56.217210665933415,
+          "time": 26.96924514770508,
+          "risk": 40.26333236694336,
+          "waterway_type": "open"
+        },
+        {
+          "sequence": 6,
+          "from_node": 1879,
+          "to_node": 1884,
+          "distance": 59.4824261840436,
+          "time": 73.21002349853515,
+          "risk": 64.28587341308594,
+          "waterway_type": "open"
+        }
+      ]
+    },
+    {
+      "type": "时间最短",
+      "nodes": [
+        165,
+        1801,
+        1803,
+        1854,
+        1879,
+        1884
+      ],
+      "edges": [
+        [
+          165,
+          1801
+        ],
+        [
+          1801,
+          1803
+        ],
+        [
+          1803,
+          1854
+        ],
+        [
+          1854,
+          1879
+        ],
+        [
+          1879,
+          1884
+        ]
+      ],
+      "total_distance_km": 9.99,
+      "total_time_min": 41.45,
+      "avg_speed_knots": 7.81,
+      "risk_score": 30.66,
+      "safety_score": 69.34,
+      "total_frequency": 3,
+      "constraints_met": true,
+      "waypoint_count": 5,
+      "waypoints": [
+        {
+          "sequence": 1,
+          "from_node": 165,
+          "to_node": 1801,
+          "distance": 2014.0627621142537,
+          "time": 489.42038348421795,
+          "risk": 23.0,
+          "waterway_type": "open"
+        },
+        {
+          "sequence": 2,
+          "from_node": 1801,
+          "to_node": 1803,
+          "distance": 585.1628845188403,
+          "time": 142.19549098922053,
+          "risk": 23.0,
+          "waterway_type": "open"
+        },
+        {
+          "sequence": 3,
+          "from_node": 1803,
+          "to_node": 1854,
+          "distance": 3852.922780928276,
+          "time": 936.2662278694295,
+          "risk": 23.0,
+          "waterway_type": "open"
+        },
+        {
+          "sequence": 4,
+          "from_node": 1854,
+          "to_node": 1879,
+          "distance": 3481.84563413302,
+          "time": 846.0939040953102,
+          "risk": 20.0,
+          "waterway_type": "open"
+        },
+        {
+          "sequence": 5,
+          "from_node": 1879,
+          "to_node": 1884,
+          "distance": 59.4824261840436,
+          "time": 73.21002349853515,
+          "risk": 64.28587341308594,
+          "waterway_type": "open"
+        }
+      ]
+    }
+  ],
   "comparison_summary": [
     {
       "type": "安全优先",
-      "distance_km": 20.91,
-      "time_min": 84.7,
-      "safety_score": 73.5,
-      "risk_score": 26.5,
-      "total_frequency": 0
+      "distance_km": 9.89,
+      "time_min": 41.24,
+      "safety_score": 67.74,
+      "risk_score": 32.26,
+      "total_frequency": 11
+    },
+    {
+      "type": "时间最短",
+      "distance_km": 9.99,
+      "time_min": 41.45,
+      "safety_score": 69.34,
+      "risk_score": 30.66,
+      "total_frequency": 3
+    },
+    {
+      "type": "通航频次最高",
+      "distance_km": 9.59,
+      "time_min": 40.03,
+      "safety_score": 65.89,
+      "risk_score": 34.11,
+      "total_frequency": 11
     }
   ]
 }

@@ -30,20 +30,15 @@ class NodeCluster:
             self.config.update(config)
 
     def cluster_nodes(self, nodes: List[Dict]) -> List[Dict]:
-        """对节点进行聚类（优化版：HDBSCAN + KDE中心）"""
+        """对节点进行聚类（优化版：HDBSCAN + 航向感知距离 + KDE中心）"""
         if not nodes:
             return []
 
         logger.info("开始节点聚类，节点数: %d", len(nodes))
 
-        # 提取坐标和时间特征
-        coords = np.array([[n['lat'], n['lon']] for n in nodes])
-
-        # 尝试使用 HDBSCAN（自适应密度聚类）
-        labels = self._hdbscan_clustering(coords)
+        labels = self._hdbscan_clustering(nodes)
         if labels is None:
-            # 回退到 DBSCAN
-            labels = self._dbscan_clustering(coords)
+            labels = self._dbscan_clustering(nodes)
 
         clustered = self._aggregate_clusters_kde(nodes, labels)
         final = self._identify_special_nodes(clustered)
@@ -53,40 +48,49 @@ class NodeCluster:
         logger.info("聚类完成: %d 个聚类, %d 噪声点, %d 最终节点", n_clusters, noise, len(final))
         return final
 
-    def _hdbscan_clustering(self, coords: np.ndarray) -> np.ndarray:
+    def _build_heading_aware_features(self, nodes: List[Dict], coords_meters: np.ndarray) -> np.ndarray:
+        """构建航向感知特征空间：[x_m, y_m, w*sin(θ)*R, w*cos(θ)*R]"""
+        heading_weight = self.config.get('heading_weight', 100)
+        n = len(nodes)
+        features = np.zeros((n, 4))
+        features[:, :2] = coords_meters
+        for i, node in enumerate(nodes):
+            heading = node.get('heading', 0)
+            concentration = node.get('heading_concentration', 0)
+            features[i, 2] = heading_weight * np.sin(np.radians(heading)) * concentration
+            features[i, 3] = heading_weight * np.cos(np.radians(heading)) * concentration
+        return features
+
+    def _hdbscan_clustering(self, nodes: List[Dict]) -> np.ndarray:
         """HDBSCAN 自适应密度聚类"""
         try:
             import hdbscan
 
-            n = len(coords)
+            n = len(nodes)
+            coords = np.array([[node['lat'], node['lon']] for node in nodes])
+
             if n > 10000:
-                # 大数据量时先采样估计参数
                 sample_idx = np.random.choice(n, min(5000, n), replace=False)
+                sample_nodes = [nodes[i] for i in sample_idx]
                 sample_coords = coords[sample_idx]
             else:
+                sample_nodes = nodes
                 sample_coords = coords
 
-            # HDBSCAN 参数：min_cluster_size 控制最小聚类大小
             min_cluster_size = min(self.config['min_samples'] + 2, max(5, n // 100))
+            sample_meters = self._latlon_to_meters(sample_coords)
+            sample_features = self._build_heading_aware_features(sample_nodes, sample_meters)
+
             clusterer = hdbscan.HDBSCAN(
                 min_cluster_size=min_cluster_size,
                 min_samples=self.config['min_samples'],
-                metric='haversine' if len(sample_coords) < 3000 else 'euclidean',
-                cluster_selection_method='eom'  # Excess of Mass
+                metric='euclidean',
+                cluster_selection_method='eom'
             )
-
-            # HDBSCAN 的 haversine 需要弧度输入
-            if clusterer.metric == 'haversine':
-                sample_rad = np.radians(sample_coords)
-                labels_sample = clusterer.fit_predict(sample_rad)
-            else:
-                # 欧氏距离需要投影到米
-                sample_meters = self._latlon_to_meters(sample_coords)
-                labels_sample = clusterer.fit_predict(sample_meters)
+            labels_sample = clusterer.fit_predict(sample_features)
 
             if n > 10000:
-                # 对全量数据用近似方法分配标签
-                return self._approximate_hdbscan_labels(coords, sample_coords, labels_sample)
+                return self._approximate_hdbscan_labels(nodes, coords, sample_nodes, sample_features, labels_sample)
             else:
                 return labels_sample
 
@@ -107,30 +111,35 @@ class NodeCluster:
             (coords[:, 1] - np.mean(coords[:, 1])) * lon_m
         ])
 
-    def _approximate_hdbscan_labels(self, coords: np.ndarray, sample_coords: np.ndarray,
+    def _approximate_hdbscan_labels(self, nodes: List[Dict], coords: np.ndarray,
+                                     sample_nodes: List[Dict], sample_features: np.ndarray,
                                      sample_labels: np.ndarray) -> np.ndarray:
-        """对全量数据近似分配 HDBSCAN 标签（基于最近采样点）"""
+        """对全量数据近似分配 HDBSCAN 标签（基于航向感知特征空间最近邻）"""
         from scipy.spatial import cKDTree
 
-        # 构建采样点的 KD-Tree
-        tree = cKDTree(sample_coords)
-        _, nearest_idx = tree.query(coords, k=1)
+        all_meters = self._latlon_to_meters(coords)
+        all_features = self._build_heading_aware_features(nodes, all_meters)
+
+        tree = cKDTree(sample_features)
+        _, nearest_idx = tree.query(all_features, k=1)
         return sample_labels[nearest_idx]
 
-    def _dbscan_clustering(self, coords: np.ndarray) -> np.ndarray:
-        """DBSCAN 聚类（回退方案）"""
-        n = len(coords)
+    def _dbscan_clustering(self, nodes: List[Dict]) -> np.ndarray:
+        """DBSCAN 聚类（回退方案，航向感知）"""
+        n = len(nodes)
         if n > 10000:
-            return self._approximate_clustering(coords)
+            return self._approximate_clustering(nodes)
 
-        # 使用米制距离而非预计算矩阵（更高效）
+        coords = np.array([[node['lat'], node['lon']] for node in nodes])
         coords_meters = self._latlon_to_meters(coords)
+        features = self._build_heading_aware_features(nodes, coords_meters)
         labels = DBSCAN(eps=self.config['eps'], min_samples=self.config['min_samples'],
-                         metric='euclidean').fit_predict(coords_meters)
+                         metric='euclidean').fit_predict(features)
         return labels
 
-    def _approximate_clustering(self, coords: np.ndarray) -> np.ndarray:
-        """近似网格聚类（大数据优化）"""
+    def _approximate_clustering(self, nodes: List[Dict]) -> np.ndarray:
+        """近似网格聚类（大数据优化，航向感知）"""
+        coords = np.array([[n['lat'], n['lon']] for n in nodes])
         avg_lat = np.mean(coords[:, 0])
         lat_meters_per_degree = 111000
         lon_meters_per_degree = 111000 * np.cos(np.radians(avg_lat))
@@ -138,12 +147,20 @@ class NodeCluster:
         eps = self.config['eps']
         lat_grid_size = eps / lat_meters_per_degree
         lon_grid_size = eps / lon_meters_per_degree
+        heading_bin_size = 45
 
         grid_dict = defaultdict(list)
-        for i, (lat, lon) in enumerate(coords):
-            grid_dict[(int(lat / lat_grid_size), int(lon / lon_grid_size))].append(i)
+        for i, node in enumerate(nodes):
+            lat, lon = node['lat'], node['lon']
+            concentration = node.get('heading_concentration', 0)
+            if concentration > 0.3:
+                heading = node.get('heading', 0)
+                h_bin = int(heading / heading_bin_size) % (360 // heading_bin_size)
+            else:
+                h_bin = -1
+            grid_dict[(int(lat / lat_grid_size), int(lon / lon_grid_size), h_bin)].append(i)
 
-        labels = np.full(len(coords), -1)
+        labels = np.full(len(nodes), -1)
         for cid, indices in enumerate(grid_dict.values()):
             if len(indices) >= self.config['min_samples']:
                 for idx in indices:
@@ -174,8 +191,16 @@ class NodeCluster:
                 for t, c in n.get('type_distribution', {n['type']: 1}).items():
                     type_dist[t] += c
 
-            # 使用 KDE 找密度中心（替代简单加权平均）
             center_lat, center_lon = self._kde_center(cnodes)
+
+            sin_sum = sum(n['frequency'] * np.sin(np.radians(n.get('heading', 0))) for n in cnodes if n.get('heading') is not None)
+            cos_sum = sum(n['frequency'] * np.cos(np.radians(n.get('heading', 0))) for n in cnodes if n.get('heading') is not None)
+            if sin_sum != 0 or cos_sum != 0:
+                cluster_heading = np.degrees(np.arctan2(sin_sum, cos_sum)) % 360
+                cluster_R = np.sqrt(sin_sum**2 + cos_sum**2) / total_freq
+            else:
+                cluster_heading = None
+                cluster_R = None
 
             aggregated.append({
                 'node_id': cid, 'cluster_id': label,
@@ -187,7 +212,9 @@ class NodeCluster:
                 'type_distribution': dict(type_dist),
                 'detailed_type': cnodes[0].get('detailed_type', cnodes[0]['type']),
                 'node_count': len(cnodes),
-                'is_noise': False
+                'is_noise': False,
+                'heading': cluster_heading,
+                'heading_concentration': cluster_R
             })
 
         aggregated.sort(key=lambda x: x['frequency'], reverse=True)

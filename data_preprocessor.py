@@ -103,87 +103,96 @@ class DataPreprocessor:
         return df
 
     def _detect_drift_multidim(self, df: pd.DataFrame) -> pd.DataFrame:
-        """多维异常检测：IsolationForest + 传统漂移检测"""
+        """多维异常检测：向量化漂移检测 + 全局IsolationForest"""
         original = len(df)
         drift_indices = set()
         max_gap = self.cleaning_config['max_time_gap']
         max_jump = self.cleaning_config['max_distance_jump']
         max_speed = self.cleaning_config['max_speed']
 
-        # 第一阶段：传统漂移检测（速度/距离跳跃）
-        for _, group in df.groupby('船舶名称'):
+        logger.info("  向量化漂移检测...")
+        all_features = []
+        all_indices = []
+
+        for ship_name, group in df.groupby('船舶名称'):
             if len(group) < 2:
                 continue
             group = group.sort_values('时间').reset_index()
-            for i in range(1, len(group)):
-                time_diff = (group.loc[i, '时间'] - group.loc[i-1, '时间']).total_seconds()
-                if time_diff > max_gap or time_diff <= 0:
-                    continue
-                distance = haversine_distance(
-                    group.loc[i-1, '纬度'], group.loc[i-1, '经度'],
-                    group.loc[i, '纬度'], group.loc[i, '经度'])
-                instant_speed = distance / time_diff * 1.944
-                if distance > max_jump or instant_speed > max_speed:
-                    drift_indices.add(group.loc[i, 'index'])
 
-        # 第二阶段：IsolationForest 多维异常检测
-        try:
-            from sklearn.ensemble import IsolationForest
+            lats = group['纬度'].values
+            lons = group['经度'].values
+            times = group['时间'].values
+            speeds = group['航速'].values
+            courses = group['航向'].values
+            orig_idx = group['index'].values
 
-            # 为每条轨迹构建特征：速度变化率、航向变化率、距离/时间比
-            for ship_name, group in df.groupby('船舶名称'):
-                if len(group) < 5:
-                    continue
-                group = group.sort_values('时间').reset_index()
+            n = len(group)
+            if n < 2:
+                continue
 
-                # 构建多维特征
-                features = []
-                feature_indices = []
-                for i in range(1, len(group) - 1):
-                    time_diff_prev = (group.loc[i, '时间'] - group.loc[i-1, '时间']).total_seconds()
-                    time_diff_next = (group.loc[i+1, '时间'] - group.loc[i, '时间']).total_seconds()
+            time_diffs = np.zeros(n)
+            time_diffs[1:] = [float((times[i] - times[i-1]) / np.timedelta64(1, 's')) for i in range(1, n)]
 
-                    if time_diff_prev <= 0 or time_diff_next <= 0:
-                        continue
+            dists = np.zeros(n)
+            dists[1:] = [haversine_distance(lats[i-1], lons[i-1], lats[i], lons[i]) for i in range(1, n)]
 
-                    dist_prev = haversine_distance(
-                        group.loc[i-1, '纬度'], group.loc[i-1, '经度'],
-                        group.loc[i, '纬度'], group.loc[i, '经度'])
-                    dist_next = haversine_distance(
-                        group.loc[i, '纬度'], group.loc[i, '经度'],
-                        group.loc[i+1, '纬度'], group.loc[i+1, '经度'])
+            instant_speeds = np.zeros(n)
+            valid_time = time_diffs > 0
+            instant_speeds[valid_time] = (dists[valid_time] / time_diffs[valid_time]) * 1.944
 
-                    speed_ratio = dist_next / max(dist_prev, 1e-6)
-                    course_diff = abs(group.loc[i+1, '航向'] - group.loc[i-1, '航向'])
-                    if course_diff > 180:
-                        course_diff = 360 - course_diff
+            drift_mask = (dists > max_jump) | (instant_speeds > max_speed)
+            drift_mask &= ~((time_diffs > max_gap) | (time_diffs <= 0))
 
-                    features.append([
-                        group.loc[i, '航速'],
-                        dist_prev / max(time_diff_prev, 1e-6) * 1.944,
-                        speed_ratio,
-                        course_diff,
-                        dist_prev + dist_next
-                    ])
-                    feature_indices.append(i)
+            for idx in np.where(drift_mask)[0]:
+                drift_indices.add(orig_idx[idx])
 
-                if len(features) >= 5:
-                    X = np.array(features)
-                    # 标准化
-                    from sklearn.preprocessing import StandardScaler
-                    scaler = StandardScaler()
-                    X_scaled = scaler.fit_transform(X)
+            if n >= 5:
+                speed_ratios = np.zeros(n)
+                course_diffs = np.zeros(n)
 
-                    # IsolationForest 检测异常
-                    clf = IsolationForest(contamination=0.05, random_state=42, n_estimators=100)
-                    preds = clf.fit_predict(X_scaled)
+                prev_valid = np.roll(valid_time, 1) & valid_time
+                next_valid = np.roll(valid_time, -1) & valid_time
 
-                    for idx, pred in zip(feature_indices, preds):
-                        if pred == -1:
-                            drift_indices.add(group.loc[idx, 'index'])
+                safe_prev = dists[2:n] / np.maximum(dists[1:n-1], 1e-6)
+                speed_ratios[1:-1] = safe_prev
 
-        except ImportError:
-            logger.warning("sklearn 未安装，跳过 IsolationForest 异常检测")
+                raw_course_diff = np.abs(np.roll(courses, -1) - np.roll(courses, 1))
+                course_diffs[1:-1] = np.where(raw_course_diff[1:-1] > 180, 360 - raw_course_diff[1:-1], raw_course_diff[1:-1])
+
+                calc_speeds = np.zeros(n)
+                calc_speeds[prev_valid] = (dists[prev_valid] / time_diffs[prev_valid]) * 1.944
+
+                for i in range(1, n - 1):
+                    if valid_time[i] and prev_valid[i]:
+                        all_features.append([
+                            speeds[i],
+                            calc_speeds[i],
+                            speed_ratios[i],
+                            course_diffs[i],
+                            dists[i]
+                        ])
+                        all_indices.append(orig_idx[i])
+
+        if all_features:
+            try:
+                from sklearn.ensemble import IsolationForest
+                from sklearn.preprocessing import StandardScaler
+
+                X = np.array(all_features)
+                scaler = StandardScaler()
+                X_scaled = scaler.fit_transform(X)
+
+                clf = IsolationForest(contamination=0.01, random_state=42, n_estimators=50)
+                preds = clf.fit_predict(X_scaled)
+
+                for idx, pred in zip(all_indices, preds):
+                    if pred == -1:
+                        drift_indices.add(idx)
+
+                logger.info("  IsolationForest: %d 个样本, 检测到 %d 异常", len(all_features), sum(preds == -1))
+
+            except ImportError:
+                logger.warning("sklearn 未安装，跳过 IsolationForest")
 
         df = df.drop(list(drift_indices))
         logger.info("去除漂移（含多维异常）: %d 条", original - len(df))

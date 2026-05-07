@@ -1,0 +1,162 @@
+================================================================================
+航道拓扑节点网络提取系统 - 汇总报告
+================================================================================
+生成时间: 2026-05-05 22:35:54
+
+--------------------------------------------------------------------------------
+【任务1 - 数据预处理】
+--------------------------------------------------------------------------------
+  状态: 完成
+  清洗后记录数: 1,105,643
+  文件: E:\Data_Element\output\cleaned_data.csv
+  时间范围: 2026-03-17 00:00:01 ~ 2026-03-24 09:49:35
+
+--------------------------------------------------------------------------------
+【任务2 - 节点提取】
+--------------------------------------------------------------------------------
+  状态: 完成
+  提取节点数: 36,651
+  节点类型分布: {'waypoint': 27324, 'turn_point': 8872, 'stop_point': 455}
+
+--------------------------------------------------------------------------------
+【任务3 - 节点聚类】
+--------------------------------------------------------------------------------
+  状态: 完成
+  聚类后节点数: 2,438
+  文件: E:\Data_Element\output\clustered_nodes.csv
+
+--------------------------------------------------------------------------------
+【任务4 - 拓扑网络构建】
+--------------------------------------------------------------------------------
+  状态: 完成
+  拓扑节点数: 1,718
+  拓扑边数: 3,388
+  边平均距离: 572.9 m
+  边平均耗时: 877.9 s
+  JSON文件: E:\Data_Element\output\waterway_topology.json
+
+--------------------------------------------------------------------------------
+【任务5 - 动态路段耗时权重建模】
+--------------------------------------------------------------------------------
+  状态: 完成
+  最优模型: gnn
+  特征数量: 22
+  参与对比模型数: 5
+    xgboost: MAE=11.7607, R²=0.3163, MAPE=52.02%
+    lightgbm: MAE=11.6733, R²=0.3662, MAPE=50.79%
+    lightgbm_tweedie: MAE=11.6478, R²=0.3539, MAPE=50.44%
+    random_forest: MAE=11.7302, R²=0.3318, MAPE=51.65%
+    gnn ★: MAE=8.2106, R²=0.5574, MAPE=17.72%
+  详细报告: E:\Data_Element\output\model_report.txt
+
+--------------------------------------------------------------------------------
+【任务6 - 可视化】
+--------------------------------------------------------------------------------
+  状态: 完成
+  生成图片数: 4
+    - network_statistics.png
+    - node_distribution.png
+    - topology_network.png
+    - trajectory_sample.png
+
+--------------------------------------------------------------------------------
+【任务7 - 船舶个性化导航决策】
+--------------------------------------------------------------------------------
+  状态: 完成
+  生成导航结果数: 10
+    中型货船: 通航频次最高 | 距离=11.5km | 耗时=47.1min | 风险=25.0
+    大型油轮: 通航频次最高 | 距离=11.5km | 耗时=46.8min | 风险=59.4
+    大型货船: 通航频次最高 | 距离=9.6km | 耗时=39.3min | 风险=50.3
+    大型集装箱船: 通航频次最高 | 距离=15.7km | 耗时=63.7min | 风险=58.2
+    客船: 通航频次最高 | 距离=15.7km | 耗时=64.1min | 风险=18.9
+    小型货船: 时间最短 | 距离=7.4km | 耗时=29.9min | 风险=28.4
+    拖船: 时间最短 | 距离=15.6km | 耗时=63.1min | 风险=15.0
+    油轮: 时间最短 | 距离=7.4km | 耗时=30.1min | 风险=30.5
+    渔船: 通航频次最高 | 距离=15.7km | 耗时=63.6min | 风险=20.1
+    集装箱船: 通航频次最高 | 距离=13.9km | 耗时=56.0min | 风险=31.3
+  成功规划: 10/10
+
+--------------------------------------------------------------------------------
+【输出文件清单】
+--------------------------------------------------------------------------------
+  cleaned_data.csv                                115409.2 KB
+  clustered_nodes.csv                                371.8 KB
+  debug_out.txt                                        0.5 KB
+  debug_out2.txt                                       0.5 KB
+  debug_out3.txt                                       0.2 KB
+  debug_out4.txt                                       0.3 KB
+  debug_out5.txt                                       0.5 KB
+  debug_test.txt                                       0.0 KB
+  demo_decision_中型货船.json                              2.5 KB
+  demo_decision_中型货船.txt                               1.4 KB
+  demo_decision_大型油轮.json                              2.5 KB
+  demo_decision_大型油轮.txt                               1.4 KB
+  demo_decision_大型集装箱船.json                            2.5 KB
+  demo_decision_大型集装箱船.txt                             1.5 KB
+  dynamic_time_matrix.csv                           2415.3 KB
+  edge_features_dynamic_weights.csv                 4664.8 KB
+  extracted_nodes.csv                               3961.0 KB
+  feat_test.txt                                        0.4 KB
+  feature_importance.csv                               0.8 KB
+  img/
+  model_metadata.json                                  3.0 KB
+  model_report.txt                                     0.4 KB
+  multitask_navigation_model.pt                      117.4 KB
+  multitask_navigation_scaler.pkl                      0.9 KB
+  nav_log.txt                                          2.2 KB
+  nav_log2.txt                                         0.6 KB
+  nav_quick_out.txt                                    2.5 KB
+  nav_test_check.txt                                   0.0 KB
+  navigation_中型货船.json                                 8.9 KB
+  navigation_中型货船.txt                                  2.1 KB
+  navigation_大型油轮.json                                 8.9 KB
+  navigation_大型油轮.txt                                  2.1 KB
+  navigation_大型货船.json                                 7.1 KB
+  navigation_大型货船.txt                                  1.9 KB
+  navigation_大型集装箱船.json                               7.0 KB
+  navigation_大型集装箱船.txt                                1.9 KB
+  navigation_客船.json                                   7.0 KB
+  navigation_客船.txt                                    1.9 KB
+  navigation_小型货船.json                                 3.7 KB
+  navigation_小型货船.txt                                  1.6 KB
+  navigation_拖船.json                                   4.2 KB
+  navigation_拖船.txt                                    1.7 KB
+  navigation_油轮.json                                   3.7 KB
+  navigation_油轮.txt                                    1.6 KB
+  navigation_渔船.json                                   7.0 KB
+  navigation_渔船.txt                                    1.9 KB
+  navigation_集装箱船.json                                13.3 KB
+  navigation_集装箱船.txt                                  2.5 KB
+  passability_model.pkl                              165.0 KB
+  risk_prediction_model.pkl                          470.1 KB
+  run3.log                                            41.3 KB
+  run_output.txt                                      39.8 KB
+  ship_characteristics_db.csv                         25.1 KB
+  standalone_run.log                                  50.3 KB
+  standalone_run2.log                                 81.0 KB
+  summary_report.txt                                   8.8 KB
+  task5_improved.log                                  25.4 KB
+  task5_run2.log                                      20.0 KB
+  task5_test.log                                       1.6 KB
+  task7_log.txt                                       14.9 KB
+  task7_log2.txt                                      17.8 KB
+  task7_log3.txt                                      27.3 KB
+  task7_result.txt                                     0.0 KB
+  task7_run10.txt                                     35.4 KB
+  task7_run4.txt                                      32.9 KB
+  task7_run5.txt                                      32.9 KB
+  task7_run6.txt                                      33.3 KB
+  task7_run7.txt                                      35.4 KB
+  task7_run8.txt                                      34.7 KB
+  task7_run9.txt                                      34.5 KB
+  test_run.txt                                        31.6 KB
+  topology_edges.csv                                 223.0 KB
+  topology_nodes.csv                                  97.9 KB
+  train_log.txt                                       23.9 KB
+  waterway_topology.json                            9796.0 KB
+  weight_model_gnn.pkl                              5370.6 KB
+  weight_model_gnn_gnn_state.pt                      155.7 KB
+
+================================================================================
+报告结束
+================================================================================

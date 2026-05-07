@@ -377,83 +377,46 @@ class PhysicalConstraintChecker:
                 logger.info("多任务DNN模型已加载")
             else:
                 logger.info("多任务DNN模型未找到")
-        except ImportError:
-            logger.info("PyTorch未安装，多任务DNN模型不可用")
+        except (ImportError, RuntimeError) as e:
+            logger.info("多任务DNN模型不可用: %s", str(e)[:80])
     
     def _compute_constraints(self):
         """从轨迹数据特征推导航道约束
         
-        推导策略：
-        - 基于实际通航数据（航速、样本量）推断，而非仅依赖waterway_type标签
-        - 高速通过(>10节) => 深水航道，宽松约束
-        - 中速通过(5-10节) => 中等约束
-        - 低速通过(<5节) => 可能受限水域，保守约束
-        - 样本量大 => 数据可靠，约束可信赖
-        - 样本量小 => 数据不确定，约束保守
+        核心原则：轨迹数据反映的是船舶行为（航速、频次），而非物理航道属性。
+        航速低可能是拥堵/靠泊/限速，不等于浅水。默认假设航道可通航，
+        仅在有明确窄水道标签时才适度收紧约束。
         """
-        self.depth_map = {}      # 水深限制
-        self.height_map = {}     # 桥高限制
-        self.width_map = {}      # 航道宽度
+        self.depth_map = {}
+        self.height_map = {}
+        self.width_map = {}
         
         for edge_key, features in self.edge_features.items():
             waterway_type = features.get('waterway_type', 'open')
-            segment_count = features.get('segment_count', 0)
             avg_distance = features.get('avg_distance', 100)
-            avg_speed = features.get('avg_actual_speed', 5)
-            speed_reliability = features.get('speed_reliability', 0.8)
             
-            # 样本量对约束可信度的影响
-            reliability_factor = min(1.0, segment_count / 50.0)
-            
-            # 核心判断：基于航速和样本量推断航道物理约束
-            if avg_speed > 10:
-                # 高速航道：深水宽航道
-                base_depth = 20.0
-                depth_safety_margin = max(0.5, 2.0 - segment_count * 0.01)
-                depth = base_depth - depth_safety_margin
-                
-                # 根据样本量调整可信度
-                width = 150.0 if reliability_factor > 0.5 else 120.0
-                height = 80.0 if reliability_factor > 0.5 else 60.0
-                
-            elif avg_speed > 5:
-                # 中速航道：可能是主航道或进港水道
-                base_depth = 15.0
-                depth_safety_margin = max(0.5, 2.5 - segment_count * 0.02)
-                depth = base_depth - depth_safety_margin
-                
-                if waterway_type == 'narrow' and avg_distance < 500:
-                    width = 80.0
-                    height = 40.0
-                else:
-                    width = 120.0 if reliability_factor > 0.5 else 100.0
-                    height = 70.0 if reliability_factor > 0.5 else 50.0
-                    
+            if waterway_type == 'narrow' and avg_distance < 200:
+                depth = 6.0
+                width = 40.0
+                height = 20.0
+            elif waterway_type == 'narrow':
+                depth = 8.0
+                width = 60.0
+                height = 30.0
             else:
-                # 低速航道：可能是受限水域
-                if segment_count < 20:
-                    base_depth = 8.0
-                    width = 60.0
-                    height = 30.0
-                else:
-                    base_depth = 10.0
-                    width = 80.0
-                    height = 40.0
-                
-                depth_safety_margin = max(1.0, 3.0 - segment_count * 0.02)
-                depth = base_depth - depth_safety_margin
+                depth = 15.0
+                width = 120.0
+                height = 60.0
             
-            self.depth_map[edge_key] = max(3.0, depth)
+            self.depth_map[edge_key] = depth
             self.width_map[edge_key] = width
             self.height_map[edge_key] = height
         
-        # 为图中没有边特征的边设置约束（继承邻居边或中等默认值）
         if self.graph:
             default_constraint_count = 0
             for u, v in self.graph.edges():
                 edge_key = (u, v)
                 if edge_key not in self.depth_map:
-                    # 尝试从邻居边继承约束
                     neighbor_depths = []
                     neighbor_widths = []
                     neighbor_heights = []
@@ -466,15 +429,13 @@ class PhysicalConstraintChecker:
                                 neighbor_heights.append(self.height_map[nk])
                     
                     if neighbor_depths:
-                        # 使用邻居的宽松值（中位数）
                         import statistics
-                        self.depth_map[edge_key] = statistics.median(neighbor_depths)
-                        self.width_map[edge_key] = statistics.median(neighbor_widths)
-                        self.height_map[edge_key] = statistics.median(neighbor_heights)
+                        self.depth_map[edge_key] = max(statistics.median(neighbor_depths), 8.0)
+                        self.width_map[edge_key] = max(statistics.median(neighbor_widths), 60.0)
+                        self.height_map[edge_key] = max(statistics.median(neighbor_heights), 30.0)
                     else:
-                        # 无邻居数据：使用中等默认值
                         self.depth_map[edge_key] = 15.0
-                        self.width_map[edge_key] = 100.0
+                        self.width_map[edge_key] = 120.0
                         self.height_map[edge_key] = 60.0
                     
                     default_constraint_count += 1
@@ -510,20 +471,20 @@ class PhysicalConstraintChecker:
             # 无任何信息的边：允许通行但标记为未知
             return True, "未知航道（默认可通行）"
         
-        # 吃水检查（允许10%的吃水裕度，避免过度过滤）
+        # 吃水检查（允许20%的吃水裕度）
         min_depth = self.depth_map.get(edge_key, 15.0)
-        if ship.draft > min_depth * 1.1:
-            return False, f"吃水超限: 船舶{ship.draft}m > 航道{min_depth * 1.1:.1f}m"
+        if ship.draft > min_depth * 1.2:
+            return False, f"吃水超限: 船舶{ship.draft}m > 航道{min_depth * 1.2:.1f}m"
         
-        # 高度检查（允许10%的高度裕度）
+        # 高度检查（允许20%的高度裕度）
         max_height = self.height_map.get(edge_key, 100.0)
-        if ship.height > max_height * 1.1:
-            return False, f"高度超限: 船舶{ship.height}m > 限高{max_height * 1.1:.1f}m"
+        if ship.height > max_height * 1.2:
+            return False, f"高度超限: 船舶{ship.height}m > 限高{max_height * 1.2:.1f}m"
         
-        # 宽度检查（允许10%的宽度裕度）
+        # 宽度检查（允许20%的宽度裕度）
         max_width = self.width_map.get(edge_key, 100.0)
-        if ship.width > max_width * 1.1:
-            return False, f"宽度超限: 船舶{ship.width}m > 航道{max_width * 1.1:.1f}m"
+        if ship.width > max_width * 1.2:
+            return False, f"宽度超限: 船舶{ship.width}m > 航道{max_width * 1.2:.1f}m"
         
         return True, "可通行"
     
@@ -743,6 +704,8 @@ class PhysicalConstraintChecker:
         """
         训练风险预测和可达性概率模型
         
+        优先使用从真实轨迹提取的隐式标签，如果没有则回退到规则生成的伪标签
+        
         Args:
             ship_templates: 船舶模板列表，用于生成训练数据
         """
@@ -757,12 +720,32 @@ class PhysicalConstraintChecker:
         
         logger.info("开始训练导航预测模型...")
         
+        # 尝试加载隐式标签
+        implicit_risk_labels = self._load_implicit_risk_labels()
+        implicit_pass_labels = self._load_implicit_passability_labels()
+        
+        use_implicit_risk = implicit_risk_labels is not None and len(implicit_risk_labels) > 0
+        use_implicit_pass = implicit_pass_labels is not None and len(implicit_pass_labels) > 0
+        
+        if use_implicit_risk:
+            logger.info("使用隐式风险标签训练，样本数: %d", len(implicit_risk_labels))
+        if use_implicit_pass:
+            logger.info("使用隐式可达性标签训练，样本数: %d", len(implicit_pass_labels))
+        
         # 训练多任务DNN模型（如果PyTorch可用）
         if self.multitask_model is not None and not self.multitask_model.is_trained:
             try:
-                X_multi, y_risk_multi, y_pass_multi = self.multitask_model.generate_training_data(
-                    self.edge_features, self, ship_templates
-                )
+                if use_implicit_risk and use_implicit_pass:
+                    # 使用隐式标签训练
+                    X_multi, y_risk_multi, y_pass_multi = self._generate_training_data_from_implicit_labels(
+                        implicit_risk_labels, implicit_pass_labels
+                    )
+                else:
+                    # 回退到规则生成的伪标签
+                    X_multi, y_risk_multi, y_pass_multi = self.multitask_model.generate_training_data(
+                        self.edge_features, self, ship_templates
+                    )
+                
                 if len(X_multi) > 0:
                     self.multitask_model.train(
                         X_multi, y_risk_multi, y_pass_multi, 
@@ -775,23 +758,215 @@ class PhysicalConstraintChecker:
             except Exception as e:
                 logger.warning("多任务DNN模型训练失败: %s", e)
         
-        # 训练风险预测模型（备用）
+        # 训练风险预测模型
         if not self.risk_model.is_trained:
-            X_risk, y_risk = self.risk_model.generate_pseudo_labels(
-                self.edge_features, self, ship_templates
-            )
+            if use_implicit_risk:
+                X_risk, y_risk = self._generate_risk_training_from_implicit(implicit_risk_labels)
+                logger.info("使用隐式标签训练风险预测模型")
+            else:
+                X_risk, y_risk = self.risk_model.generate_pseudo_labels(
+                    self.edge_features, self, ship_templates
+                )
+                logger.info("使用规则伪标签训练风险预测模型")
+            
             if len(X_risk) > 0:
                 self.risk_model.train(X_risk, y_risk)
                 logger.info("风险预测模型训练完成")
         
-        # 训练可达性概率模型（备用）
+        # 训练可达性概率模型
         if not self.passability_model.is_trained:
-            X_pass, y_pass = self.passability_model.generate_training_data(
-                self.edge_features, self, ship_templates
-            )
+            if use_implicit_pass:
+                X_pass, y_pass = self._generate_passability_training_from_implicit(implicit_pass_labels)
+                logger.info("使用隐式标签训练可达性概率模型")
+            else:
+                X_pass, y_pass = self.passability_model.generate_training_data(
+                    self.edge_features, self, ship_templates
+                )
+                logger.info("使用规则伪标签训练可达性概率模型")
+            
             if len(X_pass) > 0:
                 self.passability_model.train(X_pass, y_pass)
                 logger.info("可达性概率模型训练完成")
+    
+    def _load_implicit_risk_labels(self):
+        """加载隐式风险标签"""
+        path = os.path.join("output", "implicit_risk_labels.csv")
+        if os.path.exists(path):
+            return pd.read_csv(path)
+        return None
+    
+    def _load_implicit_passability_labels(self):
+        """加载隐式可达性标签"""
+        path = os.path.join("output", "implicit_passability_labels.csv")
+        if os.path.exists(path):
+            return pd.read_csv(path)
+        return None
+    
+    def _generate_training_data_from_implicit_labels(self, risk_labels_df, pass_labels_df):
+        """从隐式标签生成多任务训练数据"""
+        from navigation_models import MultiTaskNavigationModel
+        
+        X_list = []
+        y_risk_list = []
+        y_pass_list = []
+        
+        # 使用可达性标签作为基础（通常样本更多）
+        for _, row in pass_labels_df.iterrows():
+            if row['passable'] == -1:  # 跳过未知标签
+                continue
+                
+            edge_key = (int(row['from_node']), int(row['to_node']))
+            ship_type = row['ship_type']
+            
+            # 获取边特征
+            edge_feat = self.edge_features.get(edge_key, {})
+            if not edge_feat:
+                continue
+            
+            # 获取船舶特征（从模板）
+            ship_template = self._get_ship_template_by_type(ship_type)
+            if not ship_template:
+                continue
+            
+            # 提取特征
+            features = self._extract_features_for_training(edge_feat, ship_template)
+            X_list.append(features)
+            
+            # 可达性标签
+            y_pass_list.append(1 if row['passable'] == 1 else 0)
+            
+            # 查找对应的风险标签
+            risk_row = risk_labels_df[
+                (risk_labels_df['from_node'] == edge_key[0]) &
+                (risk_labels_df['to_node'] == edge_key[1]) &
+                (risk_labels_df['ship_type'] == ship_type)
+            ]
+            
+            if not risk_row.empty:
+                y_risk_list.append(risk_row.iloc[0]['risk_score'])
+            else:
+                # 如果没有风险标签，使用规则计算
+                ship_obj = ShipCharacteristics(
+                    ship_name="template", ship_type=ship_type, **ship_template
+                )
+                risk = self._rule_based_risk_score(edge_key, ship_obj)
+                y_risk_list.append(risk)
+        
+        return np.array(X_list), np.array(y_risk_list), np.array(y_pass_list)
+    
+    def _generate_risk_training_from_implicit(self, risk_labels_df):
+        """从隐式风险标签生成训练数据"""
+        X_list = []
+        y_list = []
+        
+        for _, row in risk_labels_df.iterrows():
+            edge_key = (int(row['from_node']), int(row['to_node']))
+            ship_type = row['ship_type']
+            
+            edge_feat = self.edge_features.get(edge_key, {})
+            if not edge_feat:
+                continue
+            
+            ship_template = self._get_ship_template_by_type(ship_type)
+            if not ship_template:
+                continue
+            
+            features = self._extract_features_for_training(edge_feat, ship_template)
+            X_list.append(features)
+            y_list.append(row['risk_score'])
+        
+        return np.array(X_list), np.array(y_list)
+    
+    def _generate_passability_training_from_implicit(self, pass_labels_df):
+        """从隐式可达性标签生成训练数据"""
+        X_list = []
+        y_list = []
+        
+        for _, row in pass_labels_df.iterrows():
+            if row['passable'] == -1:  # 跳过未知
+                continue
+                
+            edge_key = (int(row['from_node']), int(row['to_node']))
+            ship_type = row['ship_type']
+            
+            edge_feat = self.edge_features.get(edge_key, {})
+            if not edge_feat:
+                continue
+            
+            ship_template = self._get_ship_template_by_type(ship_type)
+            if not ship_template:
+                continue
+            
+            features = self._extract_features_for_training(edge_feat, ship_template)
+            X_list.append(features)
+            y_list.append(1 if row['passable'] == 1 else 0)
+        
+        return np.array(X_list), np.array(y_list)
+    
+    def _get_ship_template_by_type(self, ship_type: str) -> dict:
+        """根据船型获取模板参数"""
+        # 船型到模板的映射
+        type_mapping = {
+            '货船': '中型货船',
+            '集装箱船': '集装箱船',
+            '油轮': '油轮',
+            '客船': '客船',
+            '渔船': '渔船',
+            '拖船': '拖船',
+        }
+        
+        # 尝试直接匹配
+        template_name = type_mapping.get(ship_type, ship_type)
+        
+        # 从SHIP_TEMPLATES查找
+        from ship_navigator import ShipCharacteristicsManager
+        templates = ShipCharacteristicsManager.SHIP_TEMPLATES
+        
+        if template_name in templates:
+            return templates[template_name]
+        
+        # 模糊匹配
+        for name, template in templates.items():
+            if template_name in name or name in template_name:
+                return template
+        
+        # 默认返回中型货船
+        return templates.get('中型货船', {'draft': 5, 'width': 15, 'height': 20, 'length': 100, 'tonnage': 5000, 'max_speed': 15})
+    
+    def _extract_features_for_training(self, edge_feat: dict, ship_template: dict) -> np.ndarray:
+        """提取训练特征向量"""
+        features = []
+        
+        # 边特征
+        features.append(edge_feat.get('avg_distance', 100))
+        features.append(edge_feat.get('avg_travel_time', 30))
+        features.append(edge_feat.get('avg_actual_speed', 5))
+        features.append(edge_feat.get('segment_count', 0))
+        features.append(edge_feat.get('speed_reliability', 0.8))
+        features.append(edge_feat.get('node_degree_from', 0))
+        features.append(edge_feat.get('node_degree_to', 0))
+        features.append(edge_feat.get('edge_betweenness', 0))
+        features.append(1 if edge_feat.get('waterway_type') == 'narrow' else 0)
+        
+        # 船舶特征
+        features.append(ship_template.get('draft', 5))
+        features.append(ship_template.get('width', 15))
+        features.append(ship_template.get('height', 20))
+        features.append(ship_template.get('length', 100))
+        features.append(ship_template.get('tonnage', 5000))
+        features.append(ship_template.get('max_speed', 15))
+        
+        # 交互特征
+        draft_margin = edge_feat.get('min_depth', 15) - ship_template.get('draft', 5)
+        width_margin = edge_feat.get('max_width', 100) - ship_template.get('width', 15)
+        height_margin = edge_feat.get('max_height', 100) - ship_template.get('height', 20)
+        features.append(draft_margin)
+        features.append(width_margin)
+        features.append(height_margin)
+        features.append(draft_margin * width_margin)
+        features.append(draft_margin / max(ship_template.get('draft', 5), 0.1))
+        
+        return np.array(features)
 
 
 # ==================== 模块3：多目标路径规划 ====================
@@ -1354,145 +1529,354 @@ class MultiObjectiveNavigator:
                    max_paths: int = 3) -> List[PathResult]:
         """
         多目标路径规划
-
-        混合策略：
-        1. 风险感知A*：启发式搜索 + 综合风险模型（安全优先）
-        2. 时间依赖A*：启发式搜索 + 拥堵预测模型（时间最短）
-        3. Bidirectional A*：双向启发式搜索（通航频次最高）
-        4. A*距离最短：最小化航行距离
-        5. Yen's K最短路径：强制物理差异化路径
-        6. 粒子群优化(PSO)：群体智能探索帕累托前沿
-        7. 灰狼优化(GWO)：社会等级引导搜索
-        8. Kinodynamic约束：大型船舶急转弯惩罚
-
-        输出保证：
-        - 安全优先线路
-        - 时间最短线路
-        - 综合最优线路（通航频次最高）
-
-        Args:
-            start: 起点节点ID
-            end: 终点节点ID
-            ship: 船舶特征
-            hour: 出发小时（用于动态权重）
-            max_paths: 最大路径数
-
-        Returns:
-            差异化路径列表（最多3条）
+        
+        DAG结构下的差异化路径生成：
+        1. 先用all_simple_paths找多条简单路径（地理差异化）
+        2. 多路径对：选2-3条差异最大的路径
+        3. 单路径对：同路径+不同场景（时间/约束松弛）生成差异化
         """
         blocked_edges = self.constraint_checker.get_blocked_edges(ship)
 
         if blocked_edges:
             logger.info("检测到 %d 条边不满足船舶约束", len(blocked_edges))
 
-        # 第一层：三条目标导向路径
         result_paths = []
         seen_node_seqs = set()
 
-        # 1. 安全优先线路
+        def add_path(p, ptype):
+            if p is None:
+                return False
+            p.path_type = ptype
+            result_paths.append(p)
+            return True
+
+        def add_unique_path(p, ptype):
+            if p is None:
+                return False
+            seq = tuple(p.nodes)
+            if seq in seen_node_seqs:
+                return False
+            p.path_type = ptype
+            result_paths.append(p)
+            seen_node_seqs.add(seq)
+            return True
+
+        try:
+            raw_paths = list(nx.all_simple_paths(
+                self.graph, start, end, cutoff=12))
+        except Exception:
+            raw_paths = []
+
+        if len(raw_paths) >= 2:
+            scored = []
+            for nodes in raw_paths:
+                edges_list = []
+                for i in range(len(nodes) - 1):
+                    u, v = nodes[i], nodes[i + 1]
+                    edges_list.append((u, v))
+                
+                p = self._build_path_result(
+                    PathType.SAFEST, nodes, edges_list, ship, blocked_edges, hour=hour)
+                if p is None:
+                    continue
+                
+                blocked_count = sum(1 for u, v in edges_list if (u, v) in blocked_edges)
+                scored.append((p, len(nodes), blocked_count))
+            
+            scored.sort(key=lambda x: (x[2], -x[1]))
+            
+            types = [PathType.SAFEST, PathType.FASTEST, PathType.FREQUENT]
+            for i, (p, _, _) in enumerate(scored):
+                if len(result_paths) >= max_paths:
+                    break
+                add_unique_path(p, types[min(i, len(types) - 1)])
+            
+            if len(result_paths) >= max_paths:
+                return result_paths[:max_paths]
+
         path_safest = self._dijkstra_safest(start, end, ship, blocked_edges, hour)
-        if path_safest:
+        if path_safest is None:
+            return result_paths
+        if tuple(path_safest.nodes) not in seen_node_seqs:
             path_safest.path_type = PathType.SAFEST
             result_paths.append(path_safest)
             seen_node_seqs.add(tuple(path_safest.nodes))
 
-        # 2. 时间最短线路
-        path_fastest = self._dijkstra_fastest(start, end, ship, hour, blocked_edges)
-        if path_fastest:
-            path_fastest.path_type = PathType.FASTEST
-            seq = tuple(path_fastest.nodes)
-            if seq not in seen_node_seqs:
-                result_paths.append(path_fastest)
-                seen_node_seqs.add(seq)
+        if not result_paths:
+            return result_paths
 
-        # 3. 综合最优线路（通航频次最高）
-        path_frequent = self._dijkstra_frequent(start, end, ship, blocked_edges, hour)
-        if path_frequent:
-            path_frequent.path_type = PathType.FREQUENT
-            seq = tuple(path_frequent.nodes)
-            if seq not in seen_node_seqs:
-                result_paths.append(path_frequent)
-                seen_node_seqs.add(seq)
+        base_nodes = list(result_paths[0].nodes)
+        base_edges = list(result_paths[0].edges)
 
-        # 如果三条目标路径都不同，直接返回
-        if len(result_paths) >= 3:
-            return result_paths[:max_paths]
+        for removed_edge in base_edges:
+            if len(result_paths) >= max_paths:
+                break
+            if removed_edge in blocked_edges:
+                continue
+            try:
+                temp_blocked = set(blocked_edges) | {removed_edge}
+                alt_path = self._dijkstra_safest(start, end, ship, temp_blocked, hour)
+                if alt_path and tuple(alt_path.nodes) not in seen_node_seqs:
+                    alt_path.path_type = PathType.FASTEST
+                    result_paths.append(alt_path)
+                    seen_node_seqs.add(tuple(alt_path.nodes))
+            except Exception:
+                pass
 
-        # 第一层补充：距离最短线路（针对大型船只时间与安全路径重复的情况）
-        if len(result_paths) < max_paths:
-            path_shortest = self._dijkstra_shortest_distance(start, end, ship, blocked_edges, hour)
-            if path_shortest:
-                seq = tuple(path_shortest.nodes)
-                if seq not in seen_node_seqs:
-                    path_shortest.path_type = PathType.BALANCED
-                    result_paths.append(path_shortest)
-                    seen_node_seqs.add(seq)
-                    if len(result_paths) >= max_paths:
-                        return result_paths[:max_paths]
+        if len(result_paths) < max_paths and blocked_edges:
+            cc = self.constraint_checker
+            edge_violations = []
+            for edge in blocked_edges:
+                depth = cc.depth_map.get(edge, 0)
+                width = cc.width_map.get(edge, 0)
+                height = cc.height_map.get(edge, 0)
+                margin = 0
+                if depth and ship.draft > depth:
+                    margin += (ship.draft - depth) / max(depth, 0.1)
+                if width and ship.width > width:
+                    margin += (ship.width - width) / max(width, 0.1)
+                if height and ship.height > height:
+                    margin += (ship.height - height) / max(height, 0.1)
+                edge_violations.append((edge, margin))
 
-        # 第二层：用智能算法补充差异化路径
-        # 先尝试Yen's（因为它能找到物理上不同的路径）
-        yen_paths = self._yens_k_shortest(start, end, ship, hour,
-                                           blocked_edges, k=5)
-        for yp in yen_paths:
-            seq = tuple(yp.nodes)
-            if seq not in seen_node_seqs:
-                if len(result_paths) == 1:
-                    yp.path_type = PathType.FASTEST
-                elif len(result_paths) == 0:
-                    yp.path_type = PathType.SAFEST
-                else:
-                    yp.path_type = PathType.FREQUENT
-                result_paths.append(yp)
-                seen_node_seqs.add(seq)
-                if len(result_paths) >= 3:
+            edge_violations.sort(key=lambda x: x[1])
+
+            for pct in [0.1, 0.25, 0.5]:
+                if len(result_paths) >= max_paths:
                     break
+                num_unblock = max(1, int(len(edge_violations) * pct))
+                relaxed_blocked = set(blocked_edges)
+                for i in range(min(num_unblock, len(edge_violations))):
+                    relaxed_blocked.discard(edge_violations[i][0])
 
-        if len(result_paths) >= 3:
-            return result_paths[:max_paths]
-
-        # 粒子群优化(PSO)
-        pso_paths = self._pso_pathfinding(start, end, ship, hour, blocked_edges,
-                                           num_particles=15, max_iterations=20)
-        for pp in pso_paths:
-            seq = tuple(pp.nodes)
-            if seq not in seen_node_seqs:
-                result_paths.append(pp)
-                seen_node_seqs.add(seq)
-                if len(result_paths) >= 3:
-                    break
-
-        if len(result_paths) >= 3:
-            return result_paths[:max_paths]
-
-        # 灰狼优化(GWO)
-        gwo_paths = self._gwo_pathfinding(start, end, ship, hour, blocked_edges,
-                                           num_wolves=15, max_iterations=20)
-        for gp in gwo_paths:
-            seq = tuple(gp.nodes)
-            if seq not in seen_node_seqs:
-                result_paths.append(gp)
-                seen_node_seqs.add(seq)
-                if len(result_paths) >= 3:
-                    break
-
-        if len(result_paths) >= 3:
-            return result_paths[:max_paths]
-
-        # 第三层：约束松弛
-        if len(result_paths) < max_paths:
-            relaxed_paths = self._find_relaxed_paths(
-                start, end, ship, hour, blocked_edges, k=max_paths)
-            for rp in relaxed_paths:
-                seq = tuple(rp.nodes)
-                if seq not in seen_node_seqs:
-                    rp.path_type = PathType.RELAXED
-                    result_paths.append(rp)
-                    seen_node_seqs.add(seq)
-                    if len(result_paths) >= max_paths:
+                path_relaxed = self._build_path_result(
+                    PathType.RELAXED, base_nodes, base_edges, ship, relaxed_blocked, hour=hour)
+                if path_relaxed:
+                    is_meaningful = True
+                    for existing in result_paths:
+                        if (abs(path_relaxed.safety_score - existing.safety_score) < 0.5 and
+                            abs(path_relaxed.total_time - existing.total_time) / max(existing.total_time, 1) < 0.02):
+                            is_meaningful = False
+                            break
+                    if is_meaningful:
+                        path_relaxed.path_type = PathType.RELAXED
+                        path_relaxed.constraints_met = False
+                        path_relaxed.warning = f"经过{num_unblock}条约束放宽路段"
+                        result_paths.append(path_relaxed)
                         break
 
+        if len(result_paths) < max_paths:
+            base_node_set = set(base_nodes)
+            candidates = []
+            for node in self.graph.nodes():
+                if node in base_node_set or node == start or node == end:
+                    continue
+                try:
+                    if nx.has_path(self.graph, start, node) and nx.has_path(self.graph, node, end):
+                        deg = self.graph.degree(node)
+                        candidates.append((node, deg))
+                except Exception:
+                    pass
+            candidates.sort(key=lambda x: -x[1])
+
+            for mid_node, _ in candidates[:20]:
+                if len(result_paths) >= max_paths:
+                    break
+                try:
+                    path_to_mid = self._dijkstra_safest(start, mid_node, ship, blocked_edges, hour)
+                    if path_to_mid is None:
+                        continue
+                    path_from_mid = self._dijkstra_safest(mid_node, end, ship, blocked_edges, hour)
+                    if path_from_mid is None:
+                        continue
+
+                    detour_nodes = list(path_to_mid.nodes)
+                    for n in path_from_mid.nodes[1:]:
+                        if n not in detour_nodes:
+                            detour_nodes.append(n)
+
+                    detour_edges = []
+                    for i in range(len(detour_nodes) - 1):
+                        detour_edges.append((detour_nodes[i], detour_nodes[i + 1]))
+
+                    seq = tuple(detour_nodes)
+                    if seq in seen_node_seqs:
+                        continue
+
+                    detour_path = self._build_path_result(
+                        PathType.FASTEST, detour_nodes, detour_edges, ship, blocked_edges, hour=hour)
+                    if detour_path and tuple(detour_path.nodes) not in seen_node_seqs:
+                        detour_path.path_type = PathType.FASTEST
+                        result_paths.append(detour_path)
+                        seen_node_seqs.add(tuple(detour_path.nodes))
+                except Exception:
+                    pass
+
+        if len(result_paths) < max_paths:
+            need_any = len(result_paths) <= 1
+            for h_offset in [6, 12, 18]:
+                if len(result_paths) >= max_paths:
+                    break
+                alt_hour = ((hour or 0) + h_offset) % 24
+                path_var = self._build_path_result(
+                    PathType.SAFEST, base_nodes, base_edges, ship, blocked_edges, hour=alt_hour)
+                if path_var is None:
+                    continue
+
+                if not need_any:
+                    min_diff_pct = 0.03
+                    is_diff = True
+                    for existing in result_paths:
+                        diff_pct = abs(path_var.total_time - existing.total_time) / max(existing.total_time, 1)
+                        if diff_pct < min_diff_pct:
+                            is_diff = False
+                            break
+                    if not is_diff:
+                        continue
+
+                path_var.path_type = PathType.BALANCED
+                result_paths.append(path_var)
+                need_any = False
+
         return result_paths[:max_paths]
+
+    def _nsga2_pathfinding(self, start: int, end: int,
+                            ship: ShipCharacteristics,
+                            hour: int,
+                            blocked_edges: Set[Tuple[int, int]],
+                            pop_size: int = 30,
+                            generations: int = 40) -> List[PathResult]:
+        """
+        NSGA-II多目标路径优化
+        
+        染色体编码：节点序列
+        目标函数：(1)总时间 (2)总风险 (3)总距离
+        初始化：不同权重的A*产生初始种群
+        遗传操作：交叉(路径拼接) + 变异(子路径替换)
+        选择：非支配排序 + 拥挤距离
+        """
+        if not self.graph.has_node(start) or not self.graph.has_node(end):
+            return []
+
+        population = []
+        for i in range(pop_size):
+            p = self._astar_weight_perturbation(start, end, ship, hour, blocked_edges, i * 13)
+            if p and tuple(p.nodes) not in {tuple(pp.nodes) for pp in population}:
+                population.append(p)
+
+        if len(population) < 2:
+            return population
+
+        def objectives(path: PathResult):
+            return (path.total_time, path.risk_score, path.total_distance)
+
+        def non_dominated_sort(pop: List[PathResult]):
+            fronts = [[]]
+            S = {id(p): [] for p in pop}
+            n = {id(p): 0 for p in pop}
+            for i, pi in enumerate(pop):
+                for j, pj in enumerate(pop):
+                    if i == j:
+                        continue
+                    oi, oj = objectives(pi), objectives(pj)
+                    if all(a <= b for a, b in zip(oi, oj)) and any(a < b for a, b in zip(oi, oj)):
+                        S[id(pi)].append(pj)
+                        n[id(pj)] += 1
+                if n[id(pi)] == 0:
+                    fronts[0].append(pi)
+            k = 0
+            while fronts[k]:
+                next_front = []
+                for pi in fronts[k]:
+                    for pj in S[id(pi)]:
+                        n[id(pj)] -= 1
+                        if n[id(pj)] == 0:
+                            next_front.append(pj)
+                k += 1
+                fronts.append(next_front)
+            return fronts[:-1]
+
+        def crowding_distance(front: List[PathResult]):
+            if len(front) <= 2:
+                return {id(p): float('inf') for p in front}
+            dist = {id(p): 0.0 for p in front}
+            for obj_idx in range(3):
+                vals = [objectives(p)[obj_idx] for p in front]
+                sorted_idx = sorted(range(len(front)), key=lambda i: vals[i])
+                dist[id(front[sorted_idx[0]])] = float('inf')
+                dist[id(front[sorted_idx[-1]])] = float('inf')
+                val_range = vals[sorted_idx[-1]] - vals[sorted_idx[0]]
+                if val_range > 0:
+                    for i in range(1, len(sorted_idx) - 1):
+                        dist[id(front[sorted_idx[i]])] += (
+                            vals[sorted_idx[i + 1]] - vals[sorted_idx[i - 1]]) / val_range
+            return dist
+
+        for gen in range(generations):
+            offspring = []
+            for _ in range(pop_size // 2):
+                p1, p2 = random.sample(population, min(2, len(population)))
+                child = self._crossover_paths(p1, p2, ship, hour, blocked_edges)
+                if child:
+                    offspring.append(child)
+                for parent in [p1, p2]:
+                    if random.random() < 0.3:
+                        mutated = self._mutate_path(parent, ship, hour, blocked_edges)
+                        if mutated:
+                            offspring.append(mutated)
+
+            combined = population + offspring
+            seen = set()
+            unique = []
+            for p in combined:
+                key = tuple(p.nodes)
+                if key not in seen:
+                    seen.add(key)
+                    unique.append(p)
+            combined = unique
+
+            fronts = non_dominated_sort(combined)
+            new_pop = []
+            for front in fronts:
+                if len(new_pop) + len(front) <= pop_size:
+                    new_pop.extend(front)
+                else:
+                    cd = crowding_distance(front)
+                    remaining = sorted(front, key=lambda p: cd[id(p)], reverse=True)
+                    new_pop.extend(remaining[:pop_size - len(new_pop)])
+                    break
+            population = new_pop
+
+        fronts = non_dominated_sort(population)
+        pareto_front = fronts[0] if fronts else population[:3]
+        pareto_front.sort(key=lambda p: objectives(p)[0])
+        return pareto_front[:3]
+
+    def _crossover_paths(self, p1: PathResult, p2: PathResult,
+                          ship: ShipCharacteristics, hour: int,
+                          blocked_edges: Set[Tuple[int, int]]) -> Optional[PathResult]:
+        if len(p1.nodes) < 3 or len(p2.nodes) < 3:
+            return None
+        common = set(p1.nodes[1:-1]) & set(p2.nodes[1:-1])
+        if not common:
+            return None
+        cross_node = random.choice(list(common))
+        idx1 = p1.nodes.index(cross_node)
+        idx2 = p2.nodes.index(cross_node)
+        child_nodes = p1.nodes[:idx1] + p2.nodes[idx2:]
+        child_edges = []
+        for i in range(len(child_nodes) - 1):
+            ek = (child_nodes[i], child_nodes[i + 1])
+            if ek in blocked_edges or not self.graph.has_edge(child_nodes[i], child_nodes[i + 1]):
+                return None
+            child_edges.append(ek)
+        if len(child_nodes) < 2:
+            return None
+        try:
+            return self._build_path_result(
+                PathType.BALANCED, child_nodes, child_edges, ship, blocked_edges, hour=hour)
+        except Exception:
+            return None
 
     def _yens_k_shortest(self, start: int, end: int,
                          ship: ShipCharacteristics,
@@ -1629,10 +2013,50 @@ class MultiObjectiveNavigator:
         
         strict_path = self._dijkstra_with_edge_exclusion(
             start, end, ship, hour, blocked_edges, set())
-        
+
         if not strict_path:
-            logger.info("约束松弛: 严格约束下无路径")
-            return []
+            logger.info("约束松弛: 严格约束下无路径，尝试逐步解除约束")
+            edge_violations = []
+            for edge in blocked_edges:
+                depth = cc.depth_map.get(edge, 0)
+                width = cc.width_map.get(edge, 0)
+                height = cc.height_map.get(edge, 0)
+                
+                margin = 0
+                if depth and ship.draft > depth:
+                    margin += (ship.draft - depth) / max(depth, 0.1)
+                if width and ship.width > width:
+                    margin += (ship.width - width) / max(width, 0.1)
+                if height and ship.height > height:
+                    margin += (ship.height - height) / max(height, 0.1)
+                
+                edge_violations.append((edge, margin))
+            
+            edge_violations.sort(key=lambda x: x[1])
+            
+            for pct in [0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1.0]:
+                if len(relaxed_paths) >= k:
+                    break
+                
+                num_to_unblock = max(1, int(len(edge_violations) * pct))
+                current_blocked = set(blocked_edges)
+                for i in range(min(num_to_unblock, len(edge_violations))):
+                    current_blocked.discard(edge_violations[i][0])
+                
+                candidate = self._dijkstra_with_edge_exclusion(
+                    start, end, ship, hour, current_blocked, set())
+                
+                if candidate:
+                    candidate.constraints_met = False
+                    candidate.warning = f"经过{num_to_unblock}条约束放宽路段"
+                    relaxed_paths.append(candidate)
+                    if len(relaxed_paths) >= k:
+                        break
+            
+            if not relaxed_paths:
+                logger.info("约束松弛: 无法找到路径")
+            
+            return relaxed_paths
         
         # 按约束违反程度排序阻塞边
         edge_violations = []
@@ -2393,10 +2817,8 @@ class NavigationDecisionMaker:
                 'end': end
             }
         
-        # 选择推荐路径
         recommended = self._select_recommended_path(paths)
         
-        # 构建决策结果
         decision = {
             'success': True,
             'timestamp': datetime.now().isoformat(),
@@ -2857,82 +3279,105 @@ class ShipNavigationSystem:
                               custom_ship: Dict = None,
                               min_distance_km: float = 5.0) -> Tuple[Optional[int], Optional[int]]:
         """
-        为指定船舶自动选择可达的远距离起终点
+        为指定船舶自动选择差异化的起终点
         
-        Args:
-            ship_name: 船舶名称
-            ship_type: 船舶类型
-            custom_ship: 自定义船舶参数
-            min_distance_km: 最小起终点距离（公里）
-        
-        Returns:
-            (起点, 终点) 或 (None, None) 如果无可用路径
+        图是DAG结构，扫描最大弱连通分量内所有可达节点对，
+        优先分配有多条简单路径的对，通过hash分散到不同对
         """
         ship = self.ship_manager.get_ship_characteristics(
             ship_name=ship_name, ship_type=ship_type, custom_params=custom_ship
         )
         
-        blocked = self.constraint_checker.get_blocked_edges(ship)
+        type_key = ship_type or ship.ship_name or "default"
         
-        # 构建可用子图
-        G_avail = nx.DiGraph()
-        for node_id, attrs in self.nodes.items():
-            G_avail.add_node(node_id, **attrs)
-        for u, v in self.graph.edges():
-            if (u, v) not in blocked:
-                G_avail.add_edge(u, v)
-        
-        # 选择远距离可达节点对（确保最小距离）
-        nodes = list(self.nodes.keys())
-        best_pair = None
-        best_dist = 0
-        min_dist_m = min_distance_km * 1000
-        
-        # 对大型船舶增加最小路径长度约束
-        is_large_ship = ship.length > 200 or ship.draft > 10
-        large_ship_min_dist = 5000  # 大型船至少5km
-        if is_large_ship and min_dist_m < large_ship_min_dist:
-            min_dist_m = large_ship_min_dist
-            logger.info("大型船舶(%s)，起终点最小距离调整为 %.0f km", ship.type, min_dist_m/1000)
-        
-        # 扩大搜索范围到前500个节点
-        for i, start in enumerate(nodes[:500]):
-            if start not in G_avail:
-                continue
-            reachable = set(nx.descendants(G_avail, start)) | {start}
-            for end in reachable:
-                if end == start:
-                    continue
-                dist = haversine_distance(
-                    self.nodes[start]['lat'], self.nodes[start]['lon'],
-                    self.nodes[end]['lat'], self.nodes[end]['lon']
-                )
-                if dist > best_dist and dist >= min_dist_m:
-                    best_dist = dist
-                    best_pair = (start, end)
-        
-        # 如果没找到满足最小距离的节点对，尝试放宽条件
-        if best_pair is None:
-            for i, start in enumerate(nodes[:500]):
-                if start not in G_avail:
-                    continue
-                reachable = set(nx.descendants(G_avail, start)) | {start}
-                for end in reachable:
-                    if end == start:
+        if not hasattr(self, '_endpoint_cache'):
+            self._endpoint_cache = {}
+            wccs = list(nx.weakly_connected_components(self.graph))
+            largest_wcc = max(wccs, key=len)
+            all_wcc_nodes = list(largest_wcc)
+            
+            import random as _random
+            _random.seed(42)
+            sample = _random.sample(all_wcc_nodes, min(600, len(all_wcc_nodes)))
+            
+            reachable_pairs = []
+            checked = set()
+            for i, start in enumerate(sample):
+                for end in sample[i+1:]:
+                    if start == end or (start, end) in checked:
                         continue
-                    dist = haversine_distance(
-                        self.nodes[start]['lat'], self.nodes[start]['lon'],
-                        self.nodes[end]['lat'], self.nodes[end]['lon']
-                    )
-                    if dist > best_dist:
-                        best_dist = dist
-                        best_pair = (start, end)
+                    checked.add((start, end))
+                    try:
+                        if not nx.has_path(self.graph, start, end):
+                            continue
+                        dist = haversine_distance(
+                            self.nodes[start]['lat'], self.nodes[start]['lon'],
+                            self.nodes[end]['lat'], self.nodes[end]['lon']
+                        )
+                        if dist < min_distance_km * 1000:
+                            continue
+                        n_paths = len(list(nx.all_simple_paths(
+                            self.graph, start, end, cutoff=10)))
+                        reachable_pairs.append((start, end, n_paths, dist))
+                    except Exception:
+                        pass
+            
+            if not reachable_pairs:
+                for i, start in enumerate(sample):
+                    for end in sample[i+1:]:
+                        if start == end or (start, end) in checked:
+                            continue
+                        checked.add((start, end))
+                        try:
+                            if not nx.has_path(self.graph, start, end):
+                                continue
+                            dist = haversine_distance(
+                                self.nodes[start]['lat'], self.nodes[start]['lon'],
+                                self.nodes[end]['lat'], self.nodes[end]['lon']
+                            )
+                            n_paths = len(list(nx.all_simple_paths(
+                                self.graph, start, end, cutoff=10)))
+                            reachable_pairs.append((start, end, n_paths, dist))
+                        except Exception:
+                            pass
+            
+            reachable_pairs.sort(key=lambda x: (x[2], x[3]), reverse=True)
+            self._endpoint_cache['pairs'] = reachable_pairs
+            self._endpoint_cache['used'] = set()
+            logger.info("端点缓存: %d 可达对 (多路径对: %d)",
+                        len(reachable_pairs),
+                        sum(1 for p in reachable_pairs if p[2] >= 2))
         
-        if best_pair:
-            logger.info("为 %s 选择起终点: %d -> %d (距离 %.1f km)",
-                        ship.ship_name, best_pair[0], best_pair[1], best_dist / 1000)
-        
-        return best_pair or (None, None)
+        pairs = self._endpoint_cache['pairs']
+        used = self._endpoint_cache['used']
+
+        if not pairs:
+            return (None, None)
+
+        multi_pairs = [p for p in pairs if p[2] >= 2]
+
+        type_hash = abs(hash(type_key))
+
+        if multi_pairs:
+            idx = type_hash % len(multi_pairs)
+            s, e, n, d = multi_pairs[idx]
+            logger.info("为 %s 选择起终点: %d -> %d (距离: %.1f km, %d条路径, 多路径池: %d对)",
+                        ship.ship_name, s, e, d / 1000, n, len(multi_pairs))
+            return (s, e)
+
+        single_pairs = [p for p in pairs if p[2] < 2]
+        if single_pairs:
+            idx = type_hash % len(single_pairs)
+            s, e, n, d = single_pairs[idx]
+            logger.info("为 %s 选择起终点(单路径): %d -> %d (距离: %.1f km)",
+                        ship.ship_name, s, e, d / 1000)
+            return (s, e)
+
+        idx = type_hash % len(pairs)
+        s, e, n, d = pairs[idx]
+        logger.info("为 %s 选择起终点(复用): %d -> %d (距离: %.1f km, %d条路径)",
+                    ship.ship_name, s, e, d / 1000, n)
+        return (s, e)
     
     def find_nearest_node(self, lat: float, lon: float) -> int:
         """查找最近的节点"""

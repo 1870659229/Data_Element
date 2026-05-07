@@ -48,6 +48,7 @@ NODE_EXTRACTION_CONFIG = {
 CLUSTERING_CONFIG = {
     'eps': 100.0,
     'min_samples': 5,
+    'heading_weight': 30,
     'bifurcation_angle_threshold': 45.0,
     'merge_angle_threshold': 45.0,
     'turn_angle_threshold': 60.0,

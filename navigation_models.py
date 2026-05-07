@@ -27,7 +27,7 @@ try:
     import torch.optim as optim
     from torch.utils.data import DataLoader, TensorDataset
     TORCH_AVAILABLE = True
-except ImportError:
+except Exception:
     TORCH_AVAILABLE = False
     logger.warning("PyTorch未安装，多任务DNN模型不可用")
 
@@ -181,6 +181,68 @@ class RiskPredictionModel:
         return False
 
 
+if __name__ == "__main__":
+    import sys
+    
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+    
+    print("=" * 60)
+    print("导航预测模型模块 - 独立测试")
+    print("=" * 60)
+    
+    print("\n可用模型类:")
+    print("  1. RiskPredictionModel - 风险预测模型")
+    print("  2. PassabilityProbabilityModel - 可达性概率模型")
+    print("  3. MultiTaskNavigationModel - 多任务DNN模型 (需要PyTorch)")
+    
+    print("\n检查依赖...")
+    print(f"  PyTorch: {'已安装' if TORCH_AVAILABLE else '未安装'}")
+    
+    print("\n测试模型初始化...")
+    
+    risk_model = RiskPredictionModel()
+    print(f"  RiskPredictionModel: OK (model_path={risk_model.model_path})")
+    
+    pass_model = PassabilityProbabilityModel()
+    print(f"  PassabilityProbabilityModel: OK (model_path={pass_model.model_path})")
+    
+    if TORCH_AVAILABLE:
+        multi_model = MultiTaskNavigationModel()
+        print(f"  MultiTaskNavigationModel: OK (model_path={multi_model.model_path})")
+    
+    print("\n测试特征提取...")
+    test_edge = {
+        'avg_distance': 1500,
+        'avg_travel_time': 600,
+        'avg_actual_speed': 5.0,
+        'segment_count': 10,
+        'speed_reliability': 0.85,
+        'node_degree_from': 3,
+        'node_degree_to': 2,
+        'edge_betweenness': 0.1,
+        'waterway_type': 'open',
+        'min_depth': 20,
+        'max_width': 150,
+        'max_height': 50
+    }
+    test_ship = {
+        'draft': 6,
+        'width': 20,
+        'height': 25,
+        'length': 120,
+        'tonnage': 8000,
+        'max_speed': 12
+    }
+    
+    features = risk_model._extract_features(test_edge, test_ship)
+    print(f"  特征向量维度: {features.shape[1]}")
+    print(f"  特征值: {features[0][:5]}... (前5个)")
+    
+    print("\n" + "=" * 60)
+    print("测试完成！模型初始化正常。")
+    print("=" * 60)
+
+
 class PassabilityProbabilityModel:
     """
     可达性概率模型 - 概率化判断船舶能否通过某边
@@ -323,115 +385,41 @@ class PassabilityProbabilityModel:
 
 class MultiTaskDNN(nn.Module):
     """
-    多任务深度神经网络（超强版）
+    多任务深度神经网络（改进版）
     
-    架构改进：
-    - 更深的网络（6层共享层）
-    - 更宽的层（512->256->128->64->32）
-    - Swish激活函数（比ReLU更平滑）
-    - 残差连接（ResNet风格）
-    - 注意力机制（多头注意力）
-    - LayerNorm + Dropout组合
-    - 多尺度特征融合
-    
-    同时预测：
-    - 风险评分（回归任务，0-100）
-    - 可达性概率（分类任务，0-1）
+    基于文献改进：
+    - DIR (NeurIPS 2021): 简化架构避免过拟合，3层共享层
+    - UVOTE (GCPR 2024): NLL损失替代MSE，预测均值+方差处理不平衡回归
+    - 风险回归头输出 (mu, log_var)，用高斯NLL训练
+    - 可达性分类头输出logit，用BCE with logits训练
     """
     
-    def __init__(self, input_dim=20, shared_dims=[512, 256, 128, 64, 32], dropout_rate=0.5):
+    def __init__(self, input_dim=20, hidden_dim=128, dropout_rate=0.3):
         super(MultiTaskDNN, self).__init__()
         
-        self.dropout_rate = dropout_rate
-        self.shared_dims = shared_dims
-        
-        # 输入投影层（将输入映射到高维空间）
-        self.input_projection = nn.Sequential(
-            nn.Linear(input_dim, shared_dims[0]),
-            nn.LayerNorm(shared_dims[0]),
-            nn.SiLU(),  # Swish激活
-            nn.Dropout(dropout_rate * 0.5)
-        )
-        
-        # 构建共享层（带残差连接和投影）
-        self.shared_layers = nn.ModuleList()
-        self.shared_norms = nn.ModuleList()
-        self.shared_dropouts = nn.ModuleList()
-        self.residual_projections = nn.ModuleList()
-        
-        prev_dim = shared_dims[0]
-        for dim in shared_dims[1:]:
-            self.shared_layers.append(nn.Linear(prev_dim, dim))
-            self.shared_norms.append(nn.LayerNorm(dim))
-            self.shared_dropouts.append(nn.Dropout(dropout_rate))
-            # 残差投影（处理维度不匹配）
-            if prev_dim != dim:
-                self.residual_projections.append(nn.Linear(prev_dim, dim))
-            else:
-                self.residual_projections.append(None)
-            prev_dim = dim
-        
-        # 多尺度特征融合
-        self.multi_scale_fusion = nn.Sequential(
-            nn.Linear(sum(shared_dims[1:]), prev_dim),
-            nn.LayerNorm(prev_dim),
+        self.shared = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
             nn.SiLU(),
-            nn.Dropout(dropout_rate)
-        )
-        
-        # 多头注意力机制（学习特征重要性）
-        self.attention = nn.Sequential(
-            nn.Linear(prev_dim, prev_dim // 2),
-            nn.SiLU(),
-            nn.LayerNorm(prev_dim // 2),
-            nn.Dropout(dropout_rate * 0.5),
-            nn.Linear(prev_dim // 2, prev_dim // 4),
-            nn.SiLU(),
-            nn.Linear(prev_dim // 4, 1),
-            nn.Sigmoid()
-        )
-        
-        # 风险预测头（更深更宽）
-        self.risk_head = nn.Sequential(
-            nn.Linear(prev_dim, 128),
-            nn.SiLU(),
-            nn.LayerNorm(128),
             nn.Dropout(dropout_rate),
-            nn.Linear(128, 64),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
             nn.SiLU(),
-            nn.LayerNorm(64),
-            nn.Dropout(dropout_rate * 0.8),
-            nn.Linear(64, 32),
-            nn.SiLU(),
-            nn.LayerNorm(32),
-            nn.Dropout(dropout_rate * 0.5),
-            nn.Linear(32, 1),
-            nn.Sigmoid()  # 输出0-1，再乘以100
-        )
-        
-        # 可达性预测头（更深更宽）
-        self.passability_head = nn.Sequential(
-            nn.Linear(prev_dim, 128),
-            nn.SiLU(),
-            nn.LayerNorm(128),
             nn.Dropout(dropout_rate),
-            nn.Linear(128, 64),
-            nn.SiLU(),
+            nn.Linear(hidden_dim, 64),
             nn.LayerNorm(64),
-            nn.Dropout(dropout_rate * 0.8),
-            nn.Linear(64, 32),
             nn.SiLU(),
-            nn.LayerNorm(32),
             nn.Dropout(dropout_rate * 0.5),
-            nn.Linear(32, 1),
-            nn.Sigmoid()  # 输出0-1概率
         )
         
-        # 初始化权重
+        self.risk_mu = nn.Linear(64, 1)
+        self.risk_log_var = nn.Linear(64, 1)
+        
+        self.passability_head = nn.Linear(64, 1)
+        
         self._init_weights()
     
     def _init_weights(self):
-        """He初始化 + 特殊层处理"""
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
@@ -442,40 +430,11 @@ class MultiTaskDNN(nn.Module):
                 nn.init.constant_(m.bias, 0)
     
     def forward(self, x):
-        # 输入投影
-        x = self.input_projection(x)
-        
-        # 收集多尺度特征
-        multi_scale_features = []
-        
-        # 共享层（带残差）
-        for layer, norm, dropout, res_proj in zip(
-            self.shared_layers, self.shared_norms, 
-            self.shared_dropouts, self.residual_projections
-        ):
-            residual = x
-            x = layer(x)
-            x = norm(x)
-            x = F.silu(x)  # Swish激活
-            x = dropout(x)
-            # 残差连接
-            if res_proj is not None:
-                residual = res_proj(residual)
-            x = x + residual
-            multi_scale_features.append(x)
-        
-        # 多尺度特征融合
-        fused_features = torch.cat(multi_scale_features, dim=-1)
-        x = self.multi_scale_fusion(fused_features)
-        
-        # 注意力权重
-        attn_weight = self.attention(x)
-        shared_features = x * attn_weight
-        
-        # 任务特定输出
-        risk = self.risk_head(shared_features) * 100
-        passable = self.passability_head(shared_features)
-        return risk, passable
+        h = self.shared(x)
+        risk_mu = torch.sigmoid(self.risk_mu(h)) * 100
+        risk_log_var = self.risk_log_var(h)
+        passability_logit = self.passability_head(h)
+        return risk_mu, risk_log_var, passability_logit
 
 
 class MultiTaskNavigationModel:
@@ -575,43 +534,33 @@ class MultiTaskNavigationModel:
         return np.array(X_list), np.array(y_risk_list), np.array(y_passable_list)
     
     def train(self, X: np.ndarray, y_risk: np.ndarray, y_passable: np.ndarray,
-              epochs: int = 300, batch_size: int = 64, lr: float = 0.001,
-              risk_weight: float = 0.6, passable_weight: float = 0.4,
-              val_split: float = 0.2, patience: int = 30,
-              label_smoothing: float = 0.05, noise_std: float = 0.01):
+              epochs: int = 200, batch_size: int = 128, lr: float = 0.002,
+              risk_weight: float = 0.5, passable_weight: float = 0.5,
+              val_split: float = 0.2, patience: int = 20,
+              label_smoothing: float = 0.05, noise_std: float = 0.0):
         """
-        训练多任务模型（超强版超参数）
+        训练多任务模型（NLL改进版）
         
-        Args:
-            X: 特征矩阵
-            y_risk: 风险评分标签（0-100）
-            y_passable: 可达性标签（0/1）
-            epochs: 最大训练轮数（增加到300）
-            batch_size: 批次大小（减小到64，更稳定）
-            lr: 学习率
-            risk_weight: 风险任务损失权重
-            passable_weight: 可达性任务损失权重
-            val_split: 验证集比例
-            patience: 早停耐心值（增加到30）
-            label_smoothing: 标签平滑系数
-            noise_std: 数据增强噪声标准差
+        基于文献：
+        - DIR (NeurIPS 2021): 处理连续目标不平衡回归
+        - UVOTE (GCPR 2024): NLL损失 + 方差预测
+        
+        风险回归用高斯NLL: loss = 0.5*(exp(-log_var)*(y-mu)^2 + log_var)
+        可达性分类用BCEWithLogitsLoss + 标签平滑
         """
         from sklearn.model_selection import train_test_split
         
-        logger.info("训练多任务DNN模型（超强版），样本数: %d", len(X))
+        logger.info("训练多任务DNN模型（NLL改进版），样本数: %d", len(X))
         
-        # 划分训练集和验证集
         X_train, X_val, y_risk_train, y_risk_val, y_pass_train, y_pass_val = train_test_split(
             X, y_risk, y_passable, test_size=val_split, random_state=42, shuffle=True
         )
         
         logger.info("训练集: %d, 验证集: %d", len(X_train), len(X_val))
         
-        # 标准化（只用训练集拟合）
         X_train_scaled = self.scaler.fit_transform(X_train)
         X_val_scaled = self.scaler.transform(X_val)
         
-        # 转换为PyTorch张量
         X_train_tensor = torch.FloatTensor(X_train_scaled)
         y_risk_train_tensor = torch.FloatTensor(y_risk_train).reshape(-1, 1)
         y_pass_train_tensor = torch.FloatTensor(y_pass_train).reshape(-1, 1)
@@ -620,171 +569,105 @@ class MultiTaskNavigationModel:
         y_risk_val_tensor = torch.FloatTensor(y_risk_val).reshape(-1, 1)
         y_pass_val_tensor = torch.FloatTensor(y_pass_val).reshape(-1, 1)
         
-        # 创建数据加载器
         train_dataset = TensorDataset(X_train_tensor, y_risk_train_tensor, y_pass_train_tensor)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=False)
         
-        # 优化器：AdamW（比Adam更好的权重衰减）
-        optimizer = optim.AdamW(
-            self.model.parameters(), 
-            lr=lr, 
-            weight_decay=1e-3,  # 更强的权重衰减
-            betas=(0.9, 0.999),
-            eps=1e-8
-        )
+        optimizer = optim.AdamW(self.model.parameters(), lr=lr, weight_decay=1e-3)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
         
-        # 学习率调度：预热 + 余弦退火 + 周期性重启
-        warmup_epochs = 15
-        scheduler_warmup = optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=0.01, end_factor=1.0, total_iters=warmup_epochs
-        )
-        scheduler_cosine = optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer, T_0=50, T_mult=2, eta_min=1e-7
-        )
+        passable_criterion = nn.BCEWithLogitsLoss()
         
-        # 损失函数
-        # 风险预测：SmoothL1Loss（对异常值更鲁棒）
-        risk_criterion = nn.SmoothL1Loss(beta=5.0)
-        # 可达性预测：BCELoss + 标签平滑
-        passable_criterion = nn.BCELoss()
-        
-        # 早停相关变量
         best_val_loss = float('inf')
-        best_val_risk_loss = float('inf')
-        best_val_passable_loss = float('inf')
         best_val_r2 = -float('inf')
-        best_val_acc = 0.0
         best_epoch = 0
         no_improve_count = 0
+        best_state = None
         
-        # 训练循环
-        for epoch in range(epochs):
-            # ===== 训练阶段 =====
-            self.model.train()
-            train_loss = 0
-            train_risk_loss = 0
-            train_passable_loss = 0
-            
-            for batch_X, batch_risk, batch_passable in train_loader:
-                # 数据增强：添加高斯噪声
-                if noise_std > 0:
-                    noise = torch.randn_like(batch_X) * noise_std
-                    batch_X = batch_X + noise
+        try:
+            for epoch in range(epochs):
+                self.model.train()
+                train_loss = 0
                 
-                optimizer.zero_grad()
+                for batch_X, batch_risk, batch_passable in train_loader:
+                    optimizer.zero_grad()
+                    
+                    pred_risk_mu, pred_risk_log_var, pred_pass_logit = self.model(batch_X)
+                    
+                    risk_var = torch.exp(pred_risk_log_var).clamp(min=1e-4)
+                    loss_risk = 0.5 * (pred_risk_log_var + (batch_risk - pred_risk_mu)**2 / risk_var)
+                    loss_risk = loss_risk.mean()
+                    
+                    smoothed = batch_passable * (1 - label_smoothing) + 0.5 * label_smoothing
+                    loss_passable = passable_criterion(pred_pass_logit, smoothed)
+                    
+                    loss = risk_weight * loss_risk + passable_weight * loss_passable
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                    optimizer.step()
+                    train_loss += loss.item()
                 
-                # 前向传播
-                pred_risk, pred_passable = self.model(batch_X)
+                scheduler.step()
                 
-                # 标签平滑（仅对分类任务）
-                smoothed_passable = batch_passable * (1 - label_smoothing) + 0.5 * label_smoothing
+                self.model.eval()
+                with torch.no_grad():
+                    v_mu, v_lv, v_pl = self.model(X_val_tensor)
+                    v_var = torch.exp(v_lv).clamp(min=1e-4)
+                    vl_risk = 0.5 * (v_lv + (y_risk_val_tensor - v_mu)**2 / v_var).mean()
+                    vl_pass = passable_criterion(v_pl, y_pass_val_tensor)
+                    val_loss = risk_weight * vl_risk + passable_weight * vl_pass
+                    
+                    ss_res = torch.sum((y_risk_val_tensor - v_mu) ** 2)
+                    ss_tot = torch.sum((y_risk_val_tensor - torch.mean(y_risk_val_tensor)) ** 2)
+                    r2 = 1 - ss_res / ss_tot
+                    
+                    v_pass_prob = torch.sigmoid(v_pl)
+                    v_pred_bin = (v_pass_prob > 0.5).float()
+                    accuracy = torch.mean((v_pred_bin == y_pass_val_tensor).float())
+                    tp = torch.sum((v_pred_bin == 1) & (y_pass_val_tensor == 1)).float()
+                    fp = torch.sum((v_pred_bin == 1) & (y_pass_val_tensor == 0)).float()
+                    fn = torch.sum((v_pred_bin == 0) & (y_pass_val_tensor == 1)).float()
+                    prec = tp / (tp + fp + 1e-8)
+                    rec = tp / (tp + fn + 1e-8)
+                    f1 = 2 * prec * rec / (prec + rec + 1e-8)
                 
-                # 计算损失
-                loss_risk = risk_criterion(pred_risk, batch_risk)
-                loss_passable = passable_criterion(pred_passable, smoothed_passable)
-                
-                # 加权总损失
-                loss = risk_weight * loss_risk + passable_weight * loss_passable
-                
-                # 反向传播
-                loss.backward()
-                # 梯度裁剪（更强的裁剪）
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=0.5)
-                optimizer.step()
-                
-                train_loss += loss.item()
-                train_risk_loss += loss_risk.item()
-                train_passable_loss += loss_passable.item()
-            
-            # ===== 验证阶段 =====
-            self.model.eval()
-            with torch.no_grad():
-                val_pred_risk, val_pred_passable = self.model(X_val_tensor)
-                val_loss_risk = risk_criterion(val_pred_risk, y_risk_val_tensor)
-                val_loss_passable = passable_criterion(val_pred_passable, y_pass_val_tensor)
-                val_loss = risk_weight * val_loss_risk + passable_weight * val_loss_passable
-                
-                # 计算验证集上的R²（风险预测）
-                ss_res = torch.sum((y_risk_val_tensor - val_pred_risk) ** 2)
-                ss_tot = torch.sum((y_risk_val_tensor - torch.mean(y_risk_val_tensor)) ** 2)
-                r2 = 1 - ss_res / ss_tot
-                
-                # 计算验证集上的准确率（可达性预测）
-                val_pred_passable_binary = (val_pred_passable > 0.5).float()
-                accuracy = torch.mean((val_pred_passable_binary == y_pass_val_tensor).float())
-                
-                # 计算F1分数
-                tp = torch.sum((val_pred_passable_binary == 1) & (y_pass_val_tensor == 1)).float()
-                fp = torch.sum((val_pred_passable_binary == 1) & (y_pass_val_tensor == 0)).float()
-                fn = torch.sum((val_pred_passable_binary == 0) & (y_pass_val_tensor == 1)).float()
-                precision = tp / (tp + fp + 1e-8)
-                recall = tp / (tp + fn + 1e-8)
-                f1 = 2 * precision * recall / (precision + recall + 1e-8)
-            
-            # 学习率调整
-            if epoch < warmup_epochs:
-                scheduler_warmup.step()
-            else:
-                scheduler_cosine.step()
-            
-            # 记录日志
-            if (epoch + 1) % 10 == 0:
-                logger.info(
-                    "Epoch %d/%d | Train Loss: %.4f (Risk: %.4f, Pass: %.4f) | "
-                    "Val Loss: %.4f (Risk: %.4f, Pass: %.4f) | "
-                    "Val R²: %.4f | Val Acc: %.4f | Val F1: %.4f | LR: %.6f",
-                    epoch + 1, epochs,
-                    train_loss / len(train_loader),
-                    train_risk_loss / len(train_loader),
-                    train_passable_loss / len(train_loader),
-                    val_loss.item(),
-                    val_loss_risk.item(),
-                    val_loss_passable.item(),
-                    r2.item(),
-                    accuracy.item(),
-                    f1.item(),
-                    optimizer.param_groups[0]['lr']
-                )
-            
-            # 早停检查（基于综合验证损失 + R²）
-            improved = False
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                best_val_risk_loss = val_loss_risk.item()
-                best_val_passable_loss = val_loss_passable.item()
-                improved = True
-            
-            if r2 > best_val_r2:
-                best_val_r2 = r2.item()
-                improved = True
-            
-            if accuracy > best_val_acc:
-                best_val_acc = accuracy.item()
-                improved = True
-            
-            if improved:
-                best_epoch = epoch
-                no_improve_count = 0
-                # 保存最佳模型
-                self._save_checkpoint('best')
-            else:
-                no_improve_count += 1
-                if no_improve_count >= patience:
+                if (epoch + 1) % 10 == 0:
                     logger.info(
-                        "早停触发！最佳轮数: %d, 最佳Val Loss: %.4f (Risk: %.4f, Pass: %.4f) | "
-                        "最佳R²: %.4f | 最佳Acc: %.4f",
-                        best_epoch + 1, best_val_loss, best_val_risk_loss, best_val_passable_loss,
-                        best_val_r2, best_val_acc
+                        "Epoch %d/%d | TrainLoss: %.4f | ValLoss: %.4f | "
+                        "R²: %.4f | Acc: %.4f | F1: %.4f | LR: %.6f",
+                        epoch + 1, epochs, train_loss / len(train_loader),
+                        val_loss.item(), r2.item(), accuracy.item(), f1.item(),
+                        optimizer.param_groups[0]['lr']
                     )
-                    break
-        
-        # 加载最佳模型
-        self._load_checkpoint('best')
-        self.is_trained = True
-        logger.info("多任务DNN模型训练完成，最佳轮数: %d", best_epoch + 1)
-        
-        # 保存最终模型
-        self.save()
+                
+                improved = val_loss < best_val_loss or r2 > best_val_r2
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss.item()
+                if r2 > best_val_r2:
+                    best_val_r2 = r2.item()
+                
+                if improved:
+                    best_epoch = epoch
+                    no_improve_count = 0
+                    best_state = {k: v.clone() for k, v in self.model.state_dict().items()}
+                else:
+                    no_improve_count += 1
+                    if no_improve_count >= patience:
+                        logger.info("早停! 最佳epoch: %d, R²: %.4f", best_epoch + 1, best_val_r2)
+                        break
+            
+            if best_state is not None:
+                self.model.load_state_dict(best_state)
+            self.is_trained = True
+            logger.info("多任务DNN训练完成, 最佳epoch: %d, R²: %.4f", best_epoch + 1, best_val_r2)
+            self.save()
+        except Exception as e:
+            logger.error("DNN训练异常: %s", e)
+            if best_state is not None:
+                self.model.load_state_dict(best_state)
+                self.is_trained = True
+                logger.info("从最佳检查点恢复, R²: %.4f", best_val_r2)
+                self.save()
+            raise
     
     def _save_checkpoint(self, name: str):
         """保存检查点"""
@@ -819,9 +702,11 @@ class MultiTaskNavigationModel:
         
         self.model.eval()
         with torch.no_grad():
-            risk, passable = self.model(features_tensor)
+            risk_mu, _, pass_logit = self.model(features_tensor)
         
-        return float(risk[0][0]), float(passable[0][0])
+        risk = float(np.clip(risk_mu[0][0], 0, 100))
+        passable = float(torch.sigmoid(pass_logit[0][0]))
+        return risk, passable
     
     def save(self):
         """保存模型"""
@@ -839,14 +724,19 @@ class MultiTaskNavigationModel:
     def load(self) -> bool:
         """加载模型"""
         if os.path.exists(self.model_path) and os.path.exists(self.scaler_path):
-            checkpoint = torch.load(self.model_path, map_location='cpu')
-            self.model.load_state_dict(checkpoint['model_state_dict'])
-            self.input_dim = checkpoint['input_dim']
-            self.is_trained = checkpoint['is_trained']
-            
-            with open(self.scaler_path, 'rb') as f:
-                self.scaler = pickle.load(f)
-            
-            logger.info("多任务DNN模型已加载: %s", self.model_path)
-            return True
+            try:
+                checkpoint = torch.load(self.model_path, map_location='cpu')
+                self.model.load_state_dict(checkpoint['model_state_dict'])
+                self.input_dim = checkpoint['input_dim']
+                self.is_trained = checkpoint['is_trained']
+                
+                with open(self.scaler_path, 'rb') as f:
+                    self.scaler = pickle.load(f)
+                
+                logger.info("多任务DNN模型已加载: %s", self.model_path)
+                return True
+            except RuntimeError as e:
+                logger.warning("模型架构不匹配，跳过加载（需重新训练）: %s", str(e)[:100])
+                self.is_trained = False
+                return False
         return False

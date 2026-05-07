@@ -22,3 +22,6 @@ networkx>=2.6.0
 
 # 可视化
 matplotlib>=3.5.0
+
+# Web服务
+flask>=3.0.0

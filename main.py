@@ -289,6 +289,7 @@ class TaskManager:
                 return False
 
         nav_system = ShipNavigationSystem(output_dir=self.output_dir)
+        nav_system.constraint_checker.train_models()
         nodes = nav_system.get_available_nodes()
 
         if len(nodes) < 2:
@@ -341,6 +342,207 @@ class TaskManager:
                           ('拓扑节点', 'topology_nodes'), ('拓扑边', 'topology_edges')]:
             if os.path.exists(self.paths[key]):
                 logger.info("  %s: %s", name, self.paths[key])
+        self._generate_summary_report()
+
+    def _generate_summary_report(self):
+        """生成汇总报告 summary_report.txt"""
+        import json
+        from datetime import datetime
+
+        report_path = os.path.join(self.output_dir, 'summary_report.txt')
+        lines = []
+        w = lines.append
+
+        w("=" * 80)
+        w("航道拓扑节点网络提取系统 - 汇总报告")
+        w("=" * 80)
+        w(f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        w("")
+
+        # === 任务1: 数据预处理 ===
+        w("-" * 80)
+        w("【任务1 - 数据预处理】")
+        w("-" * 80)
+        cleaned_path = self.paths['cleaned_data']
+        if os.path.exists(cleaned_path):
+            try:
+                df = pd.read_csv(cleaned_path)
+                w(f"  状态: 完成")
+                w(f"  清洗后记录数: {len(df):,}")
+                w(f"  文件: {cleaned_path}")
+                if 'MMSI' in df.columns:
+                    w(f"  船舶数(MMSI): {df['MMSI'].nunique():,}")
+                if '时间' in df.columns:
+                    df['时间'] = pd.to_datetime(df['时间'], errors='coerce')
+                    w(f"  时间范围: {df['时间'].min()} ~ {df['时间'].max()}")
+            except Exception as e:
+                w(f"  状态: 文件存在但读取失败 ({e})")
+        else:
+            w(f"  状态: 未运行")
+
+        w("")
+
+        # === 任务2: 节点提取 ===
+        w("-" * 80)
+        w("【任务2 - 节点提取】")
+        w("-" * 80)
+        nodes_path = self.paths['extracted_nodes']
+        if os.path.exists(nodes_path):
+            try:
+                nodes_df = pd.read_csv(nodes_path)
+                w(f"  状态: 完成")
+                w(f"  提取节点数: {len(nodes_df):,}")
+                if 'type' in nodes_df.columns:
+                    type_counts = nodes_df['type'].value_counts().to_dict()
+                    w(f"  节点类型分布: {type_counts}")
+            except Exception as e:
+                w(f"  状态: 文件存在但读取失败 ({e})")
+        else:
+            w(f"  状态: 未运行")
+
+        w("")
+
+        # === 任务3: 节点聚类 ===
+        w("-" * 80)
+        w("【任务3 - 节点聚类】")
+        w("-" * 80)
+        clustered_path = self.paths['clustered_nodes']
+        if os.path.exists(clustered_path):
+            try:
+                clustered_df = pd.read_csv(clustered_path)
+                w(f"  状态: 完成")
+                w(f"  聚类后节点数: {len(clustered_df):,}")
+                w(f"  文件: {clustered_path}")
+            except Exception as e:
+                w(f"  状态: 文件存在但读取失败 ({e})")
+        else:
+            w(f"  状态: 未运行")
+
+        w("")
+
+        # === 任务4: 拓扑网络构建 ===
+        w("-" * 80)
+        w("【任务4 - 拓扑网络构建】")
+        w("-" * 80)
+        topo_nodes_path = self.paths['topology_nodes']
+        topo_edges_path = self.paths['topology_edges']
+        if os.path.exists(topo_nodes_path) and os.path.exists(topo_edges_path):
+            try:
+                topo_nodes = pd.read_csv(topo_nodes_path)
+                topo_edges = pd.read_csv(topo_edges_path)
+                w(f"  状态: 完成")
+                w(f"  拓扑节点数: {len(topo_nodes):,}")
+                w(f"  拓扑边数: {len(topo_edges):,}")
+                if 'avg_distance' in topo_edges.columns:
+                    w(f"  边平均距离: {topo_edges['avg_distance'].mean():.1f} m")
+                if 'avg_time' in topo_edges.columns:
+                    w(f"  边平均耗时: {topo_edges['avg_time'].mean():.1f} s")
+                w(f"  JSON文件: {self.paths['topology_json']}")
+            except Exception as e:
+                w(f"  状态: 文件存在但读取失败 ({e})")
+        else:
+            w(f"  状态: 未运行")
+
+        w("")
+
+        # === 任务5: 动态权重建模 ===
+        w("-" * 80)
+        w("【任务5 - 动态路段耗时权重建模】")
+        w("-" * 80)
+        model_meta_path = os.path.join(self.output_dir, 'model_metadata.json')
+        edge_feat_path = os.path.join(self.output_dir, 'edge_features_dynamic_weights.csv')
+        model_report_file = os.path.join(self.output_dir, 'model_report.txt')
+        if os.path.exists(model_meta_path):
+            try:
+                with open(model_meta_path, 'r', encoding='utf-8') as f:
+                    meta = json.load(f)
+                w(f"  状态: 完成")
+                w(f"  最优模型: {meta.get('model_name', 'N/A')}")
+                w(f"  特征数量: {meta.get('feature_count', 'N/A')}")
+                if 'model_comparison' in meta:
+                    comparison = meta['model_comparison']
+                    w(f"  参与对比模型数: {len(comparison)}")
+                    for model_name, metrics in comparison.items():
+                        best = " ★" if model_name == meta.get('model_name') else ""
+                        w(f"    {model_name}{best}: MAE={metrics['mae']:.4f}, R²={metrics['r2']:.4f}, MAPE={metrics['mape']:.2f}%")
+                w(f"  详细报告: {model_report_file}")
+            except Exception as e:
+                w(f"  状态: 元数据读取失败 ({e})")
+        else:
+            w(f"  状态: 未运行")
+
+        w("")
+
+        # === 任务6: 可视化 ===
+        w("-" * 80)
+        w("【任务6 - 可视化】")
+        w("-" * 80)
+        img_dir = os.path.join(self.output_dir, 'img')
+        if os.path.isdir(img_dir):
+            imgs = [f for f in os.listdir(img_dir) if f.endswith(('.png', '.jpg', '.svg'))]
+            w(f"  状态: 完成")
+            w(f"  生成图片数: {len(imgs)}")
+            for img in sorted(imgs):
+                w(f"    - {img}")
+        else:
+            w(f"  状态: 未运行")
+
+        w("")
+
+        # === 任务7: 导航决策 ===
+        w("-" * 80)
+        w("【任务7 - 船舶个性化导航决策】")
+        w("-" * 80)
+        nav_files = [f for f in os.listdir(self.output_dir) if f.startswith('navigation_') and f.endswith('.json')]
+        if nav_files:
+            w(f"  状态: 完成")
+            w(f"  生成导航结果数: {len(nav_files)}")
+            total_success = 0
+            for nf in sorted(nav_files):
+                try:
+                    with open(os.path.join(self.output_dir, nf), 'r', encoding='utf-8') as f:
+                        nav_data = json.load(f)
+                    ship_type = nf.replace('navigation_', '').replace('.json', '')
+                    if nav_data.get('success'):
+                        total_success += 1
+                        rec = nav_data.get('recommended_path', {})
+                        path_type = rec.get('type', 'N/A')
+                        dist = rec.get('total_distance_km', 0)
+                        time_min = rec.get('total_time_min', 0)
+                        risk = rec.get('risk_score', 0)
+                        w(f"    {ship_type}: {path_type} | 距离={dist:.1f}km | 耗时={time_min:.1f}min | 风险={risk:.1f}")
+                    else:
+                        w(f"    {ship_type}: 未找到可用路径")
+                except Exception:
+                    w(f"    {nf}: 解析失败")
+            w(f"  成功规划: {total_success}/{len(nav_files)}")
+        else:
+            w(f"  状态: 未运行（或导航结果文件缺失）")
+
+        w("")
+
+        # === 输出文件清单 ===
+        w("-" * 80)
+        w("【输出文件清单】")
+        w("-" * 80)
+        output_files = sorted(os.listdir(self.output_dir))
+        for fname in output_files:
+            fpath = os.path.join(self.output_dir, fname)
+            if os.path.isfile(fpath):
+                size_kb = os.path.getsize(fpath) / 1024
+                w(f"  {fname:<45s} {size_kb:>10.1f} KB")
+            elif os.path.isdir(fpath):
+                w(f"  {fname}/")
+
+        w("")
+        w("=" * 80)
+        w("报告结束")
+        w("=" * 80)
+
+        report_content = "\n".join(lines)
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write(report_content)
+        logger.info("汇总报告已保存: %s", report_path)
 
 
 def main():

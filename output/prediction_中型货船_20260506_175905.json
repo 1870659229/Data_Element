@@ -1,0 +1,124 @@
+{
+  "success": true,
+  "timestamp": "2026-05-06T17:59:05.869892",
+  "departure_time": null,
+  "input": {
+    "start": {
+      "lat": 22.82447531934777,
+      "lon": 113.59810241598068
+    },
+    "end": {
+      "lat": 22.854615419258504,
+      "lon": 113.57189317377996
+    }
+  },
+  "matched_nodes": {
+    "start": {
+      "node_id": 54,
+      "lat": 22.82447531934777,
+      "lon": 113.59810241598068,
+      "offset_km": 0.0
+    },
+    "end": {
+      "node_id": 135,
+      "lat": 22.854615419258504,
+      "lon": 113.57189317377996,
+      "offset_km": 0.0
+    }
+  },
+  "ship": {
+    "type": "中型货船",
+    "length": 150,
+    "width": 22,
+    "draft": 7.5,
+    "height": 25,
+    "tonnage": 15000,
+    "max_speed": 14,
+    "risk_level": "中风险",
+    "maneuverability": 0.625
+  },
+  "recommended_path": {
+    "type": "距离最短",
+    "type_key": "综合最优",
+    "nodes": [
+      54,
+      135
+    ],
+    "edges": [
+      [
+        54,
+        135
+      ]
+    ],
+    "node_count": 2,
+    "total_distance_km": 4.29,
+    "total_time_min": 17.39,
+    "avg_speed_knots": 8.0,
+    "risk_score": 23.0,
+    "safety_score": 77.0,
+    "total_frequency": 0,
+    "constraints_met": true,
+    "waypoints": [
+      {
+        "sequence": 1,
+        "from_node": 54,
+        "to_node": 135,
+        "distance": 4294.855239709746,
+        "time": 1043.6565026510852,
+        "risk": 23.0,
+        "waterway_type": "open"
+      }
+    ]
+  },
+  "all_paths": [
+    {
+      "type": "距离最短",
+      "type_key": "综合最优",
+      "nodes": [
+        54,
+        135
+      ],
+      "edges": [
+        [
+          54,
+          135
+        ]
+      ],
+      "node_count": 2,
+      "total_distance_km": 4.29,
+      "total_time_min": 17.39,
+      "avg_speed_knots": 8.0,
+      "risk_score": 23.0,
+      "safety_score": 77.0,
+      "total_frequency": 0,
+      "constraints_met": true,
+      "waypoints": [
+        {
+          "sequence": 1,
+          "from_node": 54,
+          "to_node": 135,
+          "distance": 4294.855239709746,
+          "time": 1043.6565026510852,
+          "risk": 23.0,
+          "waterway_type": "open"
+        }
+      ]
+    }
+  ],
+  "comparison": [
+    {
+      "type": "距离最短",
+      "distance_km": 4.29,
+      "time_min": 17.39,
+      "safety_score": 77.0,
+      "risk_score": 23.0,
+      "frequency": 0,
+      "node_count": 2,
+      "nodes": [
+        54,
+        135
+      ],
+      "constraints_met": true
+    }
+  ]
+}
