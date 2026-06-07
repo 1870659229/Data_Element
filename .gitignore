@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 项目大文件（不进 git）
+# 原始数据集（45MB xlsx）
+Data/*.xlsx
+
+# OSM 原始数据（300MB+ zip）
+data_osm/guangdong-260606-free.shp.zip
+data_osm/guangdong-water-shp.zip
+
+# OSM 衍生数据（每次脚本可重新生成，体积较大）
+data_osm/waterways.geojson
+data_osm/water_polygons.geojson
+data_osm/water_polygons_buffer500m.geojson
+
+# 论文参考 PDF（独立归档）
+参考文献/**/*.pdf
+
+# 训练产出的大文件
+output/cleaned_data.csv
+output/edge_features_dynamic_weights.csv
+output/feature_matrix.csv
+output/weight_model_pna_gnn_state.pt
+output/multitask_navigation_model.pt
+output/*.pkl
+
+# 临时/调试（防御性兜底，理论上已被清理）
+*.log
+_verify_waypoints/_*.log
+_verify_waypoints/_*.py
+*.bak
+*_dbscan.*
+*_hdbscan.*

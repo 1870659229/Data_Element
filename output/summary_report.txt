@@ -1,0 +1,138 @@
+================================================================================
+航道拓扑节点网络提取系统 - 汇总报告
+================================================================================
+生成时间: 2026-06-07 22:37:13
+
+--------------------------------------------------------------------------------
+【任务1 - 数据预处理】
+--------------------------------------------------------------------------------
+  状态: 完成
+  清洗后记录数: 1,105,879
+  文件: D:\py_project\Data_Element\output\cleaned_data.csv
+  时间范围: 2026-03-17 00:00:01 ~ 2026-03-24 09:49:35
+
+--------------------------------------------------------------------------------
+【任务2 - 节点提取】
+--------------------------------------------------------------------------------
+  状态: 完成
+  提取节点数: 53,581
+  节点类型分布: {'waypoint': 52537, 'turn_point': 763, 'stop_point': 281}
+
+--------------------------------------------------------------------------------
+【任务3 - 节点聚类】
+--------------------------------------------------------------------------------
+  状态: 完成
+  聚类后节点数: 1,244
+  文件: D:\py_project\Data_Element\output\clustered_nodes.csv
+
+--------------------------------------------------------------------------------
+【任务4 - 拓扑网络构建】
+--------------------------------------------------------------------------------
+  状态: 完成
+  拓扑节点数: 416
+  拓扑边数: 506
+  边平均距离: 2248.7 m
+  边平均耗时: 3504.2 s
+  JSON文件: D:\py_project\Data_Element\output\waterway_topology.json
+
+--------------------------------------------------------------------------------
+【任务5 - 动态路段耗时权重建模】
+--------------------------------------------------------------------------------
+  状态: 完成
+  最优模型: pna
+  特征数量: 28
+  参与对比模型数: 7
+    xgboost: MAE=9.3922, R²=0.7325, MAPE=14.64%
+    lightgbm: MAE=9.4982, R²=0.7754, MAPE=15.95%
+    lightgbm_tweedie: MAE=9.9174, R²=0.7764, MAPE=17.12%
+    random_forest: MAE=8.9675, R²=0.8040, MAPE=14.48%
+    ngboost: MAE=8.3377, R²=0.8346, MAPE=13.49%
+    gnn: MAE=8.5801, R²=0.8243, MAPE=14.77%
+    pna ★: MAE=8.1144, R²=0.8558, MAPE=13.45%
+  详细报告: D:\py_project\Data_Element\output\model_report.txt
+
+--------------------------------------------------------------------------------
+【任务6 - 可视化】
+--------------------------------------------------------------------------------
+  状态: 完成
+  生成图片数: 4
+    - network_statistics.png
+    - node_distribution.png
+    - topology_network.png
+    - trajectory_sample.png
+
+--------------------------------------------------------------------------------
+【任务7 - 船舶个性化导航决策】
+--------------------------------------------------------------------------------
+  状态: 未运行（或本会话未触发 Task7）
+
+--------------------------------------------------------------------------------
+【输出文件清单】
+--------------------------------------------------------------------------------
+  _v6.txt                                              0.0 KB
+  _v6b.txt                                             0.2 KB
+  _v6c.txt                                             0.1 KB
+  _v6d.txt                                             0.2 KB
+  _v6e.txt                                             0.2 KB
+  _validation_report.txt                               0.9 KB
+  _verify.txt                                          0.0 KB
+  _verify2.txt                                         0.0 KB
+  _verify3.txt                                         0.0 KB
+  _verify3b.txt                                        0.0 KB
+  _verify4.txt                                         0.0 KB
+  _verify6.txt                                         0.2 KB
+  _verify6_marker.txt                                  0.0 KB
+  bench_log.txt                                       34.3 KB
+  cleaned_data.csv                                115436.9 KB
+  clustered_nodes.csv                                186.8 KB
+  clustered_nodes_dbscan.csv                         797.8 KB
+  clustered_nodes_hdbscan.csv                        186.8 KB
+  edge_features_dynamic_weights.csv                  682.4 KB
+  edge_waypoints.csv                                 766.5 KB
+  edge_waypoints.csv.bak                            2261.7 KB
+  efficiency_report.json                               1.2 KB
+  efficiency_report.txt                                1.1 KB
+  extracted_nodes.csv                               5705.9 KB
+  feature_importance.csv                               0.5 KB
+  feature_matrix.csv                                 328.0 KB
+  img/
+  key_nodes.json                                       4.8 KB
+  model_metadata.json                                  3.0 KB
+  model_report.txt                                     2.3 KB
+  multitask_navigation_model.pt                      117.4 KB
+  multitask_navigation_scaler.pkl                      0.9 KB
+  navigation_random_sample.json                        9.1 KB
+  node_centrality.csv                                229.4 KB
+  passability_model.pkl                              122.2 KB
+  replay_test.png                                   1499.0 KB
+  replay_test2.png                                  1499.4 KB
+  risk_prediction_model.pkl                          444.7 KB
+  robust_log.txt                                       1.1 KB
+  robustness_report.json                               1.4 KB
+  robustness_report.txt                                1.3 KB
+  ship_characteristics_db.csv                         25.1 KB
+  summary_report.txt                                   7.2 KB
+  task7_investigation_report.md                        8.5 KB
+  task7_qa_report.json                                 4.2 KB
+  topology.json                                     3225.3 KB
+  topology_edges.csv                                  34.3 KB
+  topology_edges.csv.bak                              34.3 KB
+  topology_edges_dbscan.csv                          206.6 KB
+  topology_edges_hdbscan.csv                          34.3 KB
+  topology_nodes.csv                                  24.2 KB
+  topology_nodes.csv.bak                              24.2 KB
+  topology_nodes_dbscan.csv                          139.9 KB
+  topology_nodes_hdbscan.csv                          24.2 KB
+  waterway_topology.json                            2996.3 KB
+  waterway_topology.json.bak                        2996.3 KB
+  waterway_topology_dbscan.json                     9677.8 KB
+  waterway_topology_hdbscan.json                    2996.3 KB
+  weight_model_pna.pkl                              6475.0 KB
+  weight_model_pna_gnn_state.pt                     1461.6 KB
+  修复报告.md                                              8.2 KB
+  改进报告.md                                             15.1 KB
+  汇总                                                   0.9 KB
+
+================================================================================
+报告结束
+================================================================================

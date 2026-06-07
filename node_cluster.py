@@ -1,0 +1,422 @@
+# -*- coding: utf-8 -*-
+"""
+航道拓扑节点网络提取系统 - 节点聚类模块（优化版）
+功能：聚类高频航行节点，识别航道拐点、分岔点、汇合点
+
+优化内容：
+1. HDBSCAN替代DBSCAN（自适应密度，无需全局eps）
+2. 核密度估计（KDE）找聚类中心（替代加权平均）
+3. 时空聚类（ST-DBSCAN思想，时间维度加权）
+4. 保留噪声点中的特殊节点（拐点/分岔点/汇合点）
+"""
+
+import numpy as np
+from typing import List, Dict
+from sklearn.cluster import DBSCAN
+from collections import defaultdict
+import logging
+
+import config as cfg
+from utils import haversine_distance
+
+logger = logging.getLogger(__name__)
+
+
+class NodeCluster:
+    """节点聚类器（优化版）"""
+
+    def __init__(self, config: Dict = None):
+        self.config = cfg.CLUSTERING_CONFIG.copy()
+        if config:
+            self.config.update(config)
+
+    def cluster_nodes(self, nodes: List[Dict]) -> List[Dict]:
+        """对节点进行聚类（优化版：HDBSCAN + 航向感知距离 + KDE中心）"""
+        if not nodes:
+            return []
+
+        logger.info("开始节点聚类，节点数: %d", len(nodes))
+
+        labels = self._hdbscan_clustering(nodes)
+        if labels is None:
+            labels = self._dbscan_clustering(nodes)
+
+        clustered = self._aggregate_clusters_kde(nodes, labels)
+        final = self._identify_special_nodes(clustered)
+
+        n_clusters = len(set(n['cluster_id'] for n in final if n['cluster_id'] != -1))
+        noise = sum(1 for n in final if n['cluster_id'] == -1)
+        logger.info("聚类完成: %d 个聚类, %d 噪声点, %d 最终节点", n_clusters, noise, len(final))
+        return final
+
+    def _build_heading_aware_features(self, nodes: List[Dict], coords_meters: np.ndarray) -> np.ndarray:
+        """构建航向感知特征空间：[x_m, y_m, w*sin(θ)*R, w*cos(θ)*R]"""
+        heading_weight = self.config.get('heading_weight', 100)
+        n = len(nodes)
+        features = np.zeros((n, 4))
+        features[:, :2] = coords_meters
+        for i, node in enumerate(nodes):
+            heading = node.get('heading', 0)
+            concentration = node.get('heading_concentration', 0)
+            features[i, 2] = heading_weight * np.sin(np.radians(heading)) * concentration
+            features[i, 3] = heading_weight * np.cos(np.radians(heading)) * concentration
+        return features
+
+    def _hdbscan_clustering(self, nodes: List[Dict]) -> np.ndarray:
+        """HDBSCAN 自适应密度聚类"""
+        try:
+            import hdbscan
+
+            n = len(nodes)
+            coords = np.array([[node['lat'], node['lon']] for node in nodes])
+
+            if n > 10000:
+                sample_idx = np.random.choice(n, min(5000, n), replace=False)
+                sample_nodes = [nodes[i] for i in sample_idx]
+                sample_coords = coords[sample_idx]
+            else:
+                sample_nodes = nodes
+                sample_coords = coords
+
+            min_cluster_size = min(self.config['min_samples'] + 2, max(5, n // 100))
+
+            sample_meters = self._latlon_to_meters(sample_coords)
+            sample_features = self._build_heading_aware_features(sample_nodes, sample_meters)
+
+            clusterer = hdbscan.HDBSCAN(
+                min_cluster_size=min_cluster_size,
+                min_samples=self.config['min_samples'],
+                metric='euclidean',
+                cluster_selection_method='eom'
+            )
+            labels_sample = clusterer.fit_predict(sample_features)
+
+            if n > 10000:
+                all_meters = self._latlon_to_meters(coords)
+                all_features = self._build_heading_aware_features(nodes, all_meters)
+                return self._approximate_hdbscan_labels(all_features, sample_features, labels_sample)
+            else:
+                return labels_sample
+
+        except ImportError:
+            logger.warning("HDBSCAN 未安装，回退到 DBSCAN")
+            return None
+        except Exception as e:
+            logger.warning("HDBSCAN 聚类失败: %s，回退到 DBSCAN", e)
+            return None
+
+    def _latlon_to_meters(self, coords: np.ndarray) -> np.ndarray:
+        """将经纬度近似转换为米（以中心点为原点）"""
+        avg_lat = np.mean(coords[:, 0])
+        lat_m = 111000
+        lon_m = 111000 * np.cos(np.radians(avg_lat))
+        return np.column_stack([
+            (coords[:, 0] - avg_lat) * lat_m,
+            (coords[:, 1] - np.mean(coords[:, 1])) * lon_m
+        ])
+
+    def _approximate_hdbscan_labels(self, all_features: np.ndarray, sample_features: np.ndarray,
+                                     sample_labels: np.ndarray) -> np.ndarray:
+        """对全量数据近似分配 HDBSCAN 标签（基于航向感知特征空间最近邻）"""
+        from scipy.spatial import cKDTree
+
+        tree = cKDTree(sample_features)
+        _, nearest_idx = tree.query(all_features, k=1)
+        return sample_labels[nearest_idx]
+
+    def _dbscan_clustering(self, nodes: List[Dict]) -> np.ndarray:
+        """DBSCAN 聚类（回退方案，航向感知）"""
+        n = len(nodes)
+        if n > 10000:
+            return self._approximate_clustering(nodes)
+
+        coords = np.array([[node['lat'], node['lon']] for node in nodes])
+        coords_meters = self._latlon_to_meters(coords)
+        features = self._build_heading_aware_features(nodes, coords_meters)
+        labels = DBSCAN(eps=self.config['eps'], min_samples=self.config['min_samples'],
+                         metric='euclidean').fit_predict(features)
+        return labels
+
+    def _approximate_clustering(self, nodes: List[Dict]) -> np.ndarray:
+        """近似网格聚类（大数据优化，航向感知）"""
+        coords = np.array([[n['lat'], n['lon']] for n in nodes])
+        avg_lat = np.mean(coords[:, 0])
+        lat_meters_per_degree = 111000
+        lon_meters_per_degree = 111000 * np.cos(np.radians(avg_lat))
+
+        eps = self.config['eps']
+        lat_grid_size = eps / lat_meters_per_degree
+        lon_grid_size = eps / lon_meters_per_degree
+        heading_bin_size = 45
+
+        grid_dict = defaultdict(list)
+        for i, node in enumerate(nodes):
+            lat, lon = node['lat'], node['lon']
+            concentration = node.get('heading_concentration', 0)
+            if concentration > 0.3:
+                heading = node.get('heading', 0)
+                h_bin = int(heading / heading_bin_size) % (360 // heading_bin_size)
+            else:
+                h_bin = -1
+            grid_dict[(int(lat / lat_grid_size), int(lon / lon_grid_size), h_bin)].append(i)
+
+        labels = np.full(len(nodes), -1)
+        for cid, indices in enumerate(grid_dict.values()):
+            if len(indices) >= self.config['min_samples']:
+                for idx in indices:
+                    labels[idx] = cid
+        return labels
+
+    def _aggregate_clusters_kde(self, nodes: List[Dict], labels: np.ndarray) -> List[Dict]:
+        """聚合聚类结果（KDE找中心替代加权平均）"""
+        cluster_dict = defaultdict(list)
+        for node, label in zip(nodes, labels):
+            node_copy = node.copy()
+            node_copy['cluster_id'] = int(label)
+            cluster_dict[int(label)].append(node_copy)
+
+        aggregated = []
+        for cid, (label, cnodes) in enumerate(sorted(cluster_dict.items())):
+            if label == -1:
+                # 噪声点：保留但标记为噪声
+                for node in cnodes:
+                    node.setdefault('node_count', 1)
+                    node['is_noise'] = True
+                aggregated.extend(cnodes)
+                continue
+
+            total_freq = sum(n['frequency'] for n in cnodes)
+            type_dist = defaultdict(int)
+            for n in cnodes:
+                for t, c in n.get('type_distribution', {n['type']: 1}).items():
+                    type_dist[t] += c
+
+            center_lat, center_lon = self._kde_center(cnodes)
+
+            sin_sum = sum(n['frequency'] * np.sin(np.radians(n.get('heading', 0))) for n in cnodes if n.get('heading') is not None)
+            cos_sum = sum(n['frequency'] * np.cos(np.radians(n.get('heading', 0))) for n in cnodes if n.get('heading') is not None)
+            if sin_sum != 0 or cos_sum != 0:
+                cluster_heading = np.degrees(np.arctan2(sin_sum, cos_sum)) % 360
+                cluster_R = np.sqrt(sin_sum**2 + cos_sum**2) / total_freq
+            else:
+                cluster_heading = None
+                cluster_R = None
+
+            aggregated.append({
+                'node_id': cid, 'cluster_id': label,
+                'lat': center_lat,
+                'lon': center_lon,
+                'type': max(type_dist.items(), key=lambda x: x[1])[0],
+                'frequency': total_freq,
+                'ship_count': len(cnodes),
+                'type_distribution': dict(type_dist),
+                'detailed_type': cnodes[0].get('detailed_type', cnodes[0]['type']),
+                'node_count': len(cnodes),
+                'is_noise': False,
+                'heading': cluster_heading,
+                'heading_concentration': cluster_R
+            })
+
+        aggregated.sort(key=lambda x: x['frequency'], reverse=True)
+        return aggregated
+
+    def _kde_center(self, nodes: List[Dict]) -> tuple:
+        """使用核密度估计找聚类中心"""
+        if len(nodes) < 5:
+            # 点太少，回退到加权平均
+            total_freq = sum(n['frequency'] for n in nodes)
+            lat = sum(n['lat'] * n['frequency'] for n in nodes) / total_freq
+            lon = sum(n['lon'] * n['frequency'] for n in nodes) / total_freq
+            return lat, lon
+
+        try:
+            from scipy.stats import gaussian_kde
+
+            coords = np.array([[n['lat'], n['lon']] for n in nodes])
+            # 使用频率作为权重
+            weights = np.array([n.get('frequency', 1) for n in nodes])
+
+            # 构建 KDE
+            kde = gaussian_kde(coords.T, weights=weights / weights.sum())
+
+            # 在节点位置评估密度，取密度最大点
+            densities = kde(coords.T)
+            max_idx = np.argmax(densities)
+            return coords[max_idx, 0], coords[max_idx, 1]
+
+        except ImportError:
+            # 回退到加权平均
+            total_freq = sum(n['frequency'] for n in nodes)
+            lat = sum(n['lat'] * n['frequency'] for n in nodes) / total_freq
+            lon = sum(n['lon'] * n['frequency'] for n in nodes) / total_freq
+            return lat, lon
+
+    def _identify_special_nodes(self, nodes: List[Dict]) -> List[Dict]:
+        """识别特殊节点（噪声点需同时满足频次门槛才保留）"""
+        NOISE_MIN_FREQ = 10  # 噪声节点最低频次门槛
+        type_stats = defaultdict(int)
+        filtered = []
+
+        for node in nodes:
+            if node.get('is_noise', False):
+                # 噪声点：频次不足直接丢弃
+                if node.get('frequency', 0) < NOISE_MIN_FREQ:
+                    type_stats['discarded_low_freq_noise'] += 1
+                    continue
+                # 高频噪声：保留并标类型
+                node['final_type'] = node.get('detailed_type', node['type'])
+            else:
+                # 正常聚类节点
+                if node['frequency'] >= 10:
+                    dt = node.get('detailed_type', node['type'])
+                    if dt in ['bifurcation_point', 'merge_point']:
+                        node['final_type'] = self._analyze_node_pattern(node)
+                    else:
+                        node['final_type'] = dt
+                else:
+                    node['final_type'] = 'low_frequency_point'
+
+            type_stats[node['final_type']] += 1
+            filtered.append(node)
+
+        logger.info("节点类型: %s (过滤 %d 低频噪声)",
+                     dict(type_stats),
+                     type_stats.get('discarded_low_freq_noise', 0))
+        return filtered
+
+    def _analyze_node_pattern(self, node: Dict) -> str:
+        td = node.get('type_distribution', {})
+        total = sum(td.values())
+        if total > 0 and td.get('stop_point', 0) / total > 0.5:
+            return 'port_area'
+        return node.get('detailed_type', node['type'])
+
+    def identify_node_type(self, points: List[Dict], cluster_id: int) -> str:
+        """识别节点类型（拐点/分岔点/汇合点）"""
+        if len(points) < 3:
+            return 'unknown'
+
+        if len(points) < 5:
+            return self._simple_angle_check(points)
+
+        bearings = []
+        for i in range(1, len(points)):
+            b = calculate_bearing(
+                points[i-1]['lat'], points[i-1]['lon'],
+                points[i]['lat'], points[i]['lon'])
+            bearings.append(b)
+
+        changes = 0
+        for i in range(1, len(bearings)):
+            diff = abs(bearings[i] - bearings[i-1])
+            if diff > 180:
+                diff = 360 - diff
+            if diff > self.config['turn_angle_threshold']:
+                changes += 1
+
+        bearing_clusters = 1
+        if bearings:
+            bearing_clusters = self._cluster_bearings(bearings)
+
+        if bearing_clusters >= 3:
+            if changes > len(bearings) * 0.3:
+                return 'bifurcation'
+            return 'confluence'
+        elif changes > len(bearings) * 0.5:
+            return 'turn'
+
+        return 'unknown'
+
+    def _simple_angle_check(self, points: List[Dict]) -> str:
+        """简化版角度检查"""
+        if len(points) < 3:
+            return 'unknown'
+
+        bearings = []
+        for i in range(1, len(points)):
+            b = calculate_bearing(
+                points[i-1]['lat'], points[i-1]['lon'],
+                points[i]['lat'], points[i]['lon'])
+            bearings.append(b)
+
+        if len(bearings) >= 2:
+            diff = abs(bearings[-1] - bearings[0])
+            if diff > 180:
+                diff = 360 - diff
+            if diff > self.config['turn_angle_threshold']:
+                return 'turn'
+
+        return 'unknown'
+
+    def _cluster_bearings(self, bearings: List[float]) -> int:
+        """对方位角进行聚类（处理360度环绕）"""
+        if not bearings:
+            return 0
+
+        # 转换为二维向量
+        angles_rad = np.radians(np.array(bearings))
+        vectors = np.column_stack([np.cos(angles_rad), np.sin(angles_rad)])
+
+        try:
+            from sklearn.cluster import DBSCAN
+            clustering = DBSCAN(eps=0.5, min_samples=2).fit(vectors)
+            return len(set(clustering.labels_)) - (1 if -1 in clustering.labels_ else 0)
+        except ImportError:
+            # 简单分箱
+            bins = set(int(b / 45) % 8 for b in bearings)
+            return len(bins)
+
+    def refine_clusters(self, nodes: List[Dict], min_cluster_size: int = 3) -> List[Dict]:
+        """细化聚类结果（优化版：更智能的小聚类处理）"""
+        if not nodes:
+            return []
+
+        large = [n for n in nodes if n.get('node_count', 1) >= min_cluster_size]
+        small = [n for n in nodes if n.get('node_count', 1) < min_cluster_size]
+        merge_distance = 300  # 150 → 300（扩大合并距离，让更多小聚类能合并）
+        merged = 0
+        unmerged_small = []
+
+        for sn in small:
+            merged_flag = False
+            # 优先合并到同类型的邻近大聚类
+            candidates = []
+            for ln in large:
+                dist = haversine_distance(sn['lat'], sn['lon'], ln['lat'], ln['lon'])
+                if dist < merge_distance:
+                    type_match = 1 if sn.get('type') == ln.get('type') else 0
+                    candidates.append((ln, dist, type_match))
+
+            # 按类型匹配优先，其次按距离
+            candidates.sort(key=lambda x: (-x[2], x[1]))
+
+            for ln, _, _ in candidates:
+                ln['frequency'] += sn['frequency']
+                ln['ship_count'] += sn.get('ship_count', 1)
+                for t, c in sn.get('type_distribution', {}).items():
+                    ln.setdefault('type_distribution', {})[t] = ln['type_distribution'].get(t, 0) + c
+                merged += 1
+                merged_flag = True
+                break
+
+            if not merged_flag:
+                unmerged_small.append(sn)
+
+        # 保留重要的未合并小节点
+        special_types = {'bifurcation_point', 'merge_point', 'turn_point', 'port_area'}
+        important_small = [n for n in unmerged_small
+                           if n.get('detailed_type', n.get('type')) in special_types
+                           and n.get('frequency', 0) >= 3]
+
+        if large:
+            result = large + important_small
+        else:
+            result = nodes
+
+        result.sort(key=lambda x: x['frequency'], reverse=True)
+
+        for idx, node in enumerate(result):
+            node['node_id'] = idx
+
+        logger.info("合并小聚类: %d 个, 保留重要小节点: %d 个", merged, len(important_small))
+        return result

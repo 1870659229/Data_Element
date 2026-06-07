@@ -1,0 +1,866 @@
+=== Page 1 ===
+第46 卷第2 期
+2023 年6 月
+中
+国
+航
+海
+NAVIGATION OF CHINA
+Vol．46 No．2
+Jun．2023
+收稿日期: 2022-04-18
+基金项目: 国家自然科学基金资助项目( 52101402; 52001242)
+作者简介: 牟军敏( 1974—) ，男，教授，研究方向为水上交通与安全保障、智能航海与仿真等。E-mail: moujm@ whut．edu．cn
+通信作者: 陈鹏飞( 1992—) ，男，特任研究员，研究方向为水上交通事故风险分析、海事大数据挖掘与应用等。E-mail: chenpf@ whut．edu．cn
+引用格式: 牟军敏，郭绍卿，张志江，等．基于AIS 数据的水域航路网络提取方法［J］．中国航海，2023，46( 2) : 152 －160．
+MOU Junmin，GUO Shaoqing，ZHANG Zhijiang，et al．Extraction of ship track pattern from AIS data［J］．Navigation of China，2023，46
+( 2) : 152 －160．( in Chinese)
+文章编号: 1000 －4653( 2023) 02 －0152 －09
+基于AIS 数据的水域航路网络提取方法
+牟军敏
+1，郭绍卿
+1，张志江
+2，陈鹏飞
+1，陈琳瑛
+1
+( 1．武汉理工大学航运学院，湖北武汉430070;
+2．交通运输部东海航海保障中心宁波航标处，浙江宁波315000)
+摘
+要: 随着航运业的蓬勃发展，港口间交通愈发拥挤，不仅为船舶的航行安全带来挑战，也为港航部门监管带来
+巨大压力。为了助力港航部门掌握船舶交通网络演化趋势，提升船舶交通精细化管理水平，基于船舶自动识别系
+统数据提出一种水域航路网络提取方法。通过该方法挖掘水域中的船舶航行特征，识别特征节点并进行轨迹划
+分; 利用频繁轨迹模式识别构造水域航路网络拓扑，并采用垂线分治法确定航路范围。基于宁波-舟山港的数据开
+展实证研究，结果表明: 所提取的航路网络结果与水域航路分布现状高度吻合，能帮助港航部门及时发现已形成的
+习惯航路，还能用来进行航路规划，充分验证了方法的准确性、有效性和实用性。
+关键词: 航路网络; 船舶自动识别系统; 数据驱动; 轨迹特征
+中图分类号: U692．31
+文献标志码: A
+DOI: 10．3969 /j．issn．1000 －4653．2023．02．021
+Extraction of ship track pattern from AIS data
+MOU Junmin
+1，GUO Shaoqing
+1，ZHANG Zhijiang
+2，CHEN Pengfei
+1，CHEN Linying
+1
+( 1．School of Navigation，Wuhan University of Technology，Wuhan 430070，China;
+2．Ningbo Aids to Navigation Department of Donghai Navigation Safety Administration，Ningbo 315000，China)
+Abstract: A method of extracting ship track pattern from AIS data is developed to help the port authority to master the
+actual ship distribution in a water area，in turn，the evolution of traffic flow pattern．The method mines the sailing
+characteristics of ships and groups the tracks belong to the same ship through feature node examination．The traffic pattern
+in the water area is generated based on the distribution of frequent tracks．The topology of the traffic pattern is extracted．
+The width of each traffic flow is determined by using vertical divide-and-conquer approach．The AIS data from Ningbo-
+Zhoushan water area is used for verification of the method and it is proved that the extracted traffic flow pattern perfectly
+reflected the actual traffic flow．
+Key words: ship route pattern; AIS; data driven; trajectory characteristic
+随着国际航运重心东移，核心港区的蓬勃发展
+为船舶交通安全管理带来了巨大压力。船舶自动识
+别系统( Automatic Identification System，AIS) 作为一
+种以提高海上安全为目的的现代助航信息系统，目
+前已被广泛应用于海事监管、交通流分析、船舶避碰
+等领域
+［1］。为了揭示水域航路演化规律，缓解港航
+部门监管压力，从AIS 数据中挖掘航路已成为近年
+来的研究热点之一。
+考虑到不同水域的船舶密度和水文环境的差
+异
+［2］，利用AIS 数据进行航路提取的方法可分为空
+间划分、聚类、图像处理三类。对水域进行空间划分
+是一种常见的处理方法。牛敬华等
+［3］设定了距离
+
+
+=== Page 2 ===
+和数量阈值确定网格内航路点并构建有向图生成航
+路。FILIPIAK 等
+［4］对比了KDB-Tree( K-Dimensional
+B-Tree) 和四叉树两种不均匀空间划分方法的效果，
+用遗传算法检测网格中的特征点来构造航路。但是
+均匀的网格划分会导致冗余网格的出现，引起不必
+要的计算，而随着网格复杂程度的增加，不均匀划分
+所面临的航路网络提取难度也随之增加。所以为了
+避免不合理的空间划分对提取结果产生影响，基于
+聚类的方法能够利用轨迹在航路中表现出的相似性
+对航路进行提取
+［5］。YAN 等
+［6］使用点聚类方法，将
+轨迹点特征信息作为语义来描述船舶轨迹，结合
+OPTICS( Ordering Point to Identify the Cluster Struc-
+ture) 算法获取了水域中的特征节点。为了减小聚
+类开销，肖潇等
+［7］对轨迹进行压缩，采用基于DB-
+SCAN ( Density-Based Spatial Clustering of Applica-
+tions with Noise) 的轨迹段聚类算法提取船舶运动模
+式，而王加胜等
+［8］则对航路间相似度进行度量，利
+用凝聚的层次聚类算法获取航路。由于聚类在面对
+空间密度分布差异较大的数据集时会变得不理想，
+将AIS 轨迹数据转化为图像进行处理可以有效解决
+这类问题。LEE 等
+［9］基于核密度估计，对船舶轨迹
+点图像进行二值化处理构建航路。不同于传统空间
+划分，KONDO 等
+［10］根据水域网格内的船舶数生成
+了灰度图像，并利用光栅扫描提取出了航路。虽然
+图像处理技术为航路网络提取提供了不同思路，但
+是考虑到泛化能力、适应性、算力成本和样本集影响
+等问题，在实际应用中其表现并不稳定，应用场景相
+对受限。
+因此，为了能够给港航部门的规划管理提供坚
+实科学依据，本文提出一种基于AIS 数据的水域航
+路网络提取模型。该模型能够对船舶轨迹进行特征
+识别，生成航路网络拓扑，并提出垂线分治法确定航
+路范围，完成整个水域航路网络的精准提取。
+1
+研究问题与思路
+1. 1
+研究问题
+尽管现有研究从不同角度提出了从AIS 数据中
+挖掘航路的方法，但是这些研究多集中于对局部航
+路的提取，不仅忽略了水域的航路网络特征，还缺乏
+对具体航路范围的清晰认识。为解决上述问题，本
+文立足于AIS 大数据，通过挖掘船舶轨迹特征，构建
+了从局部航路特征到全局航路网络的一体化模型。
+1. 2
+研究思路
+通常，船舶在航行时的状态可以分为三种: 直
+航、静止和转向。其中，静止和转向是两个关键特
+征，而直航状态表明船舶处于正常航行中。同一条
+航路中的船舶轨迹具有高度相似的移动趋势和运动
+特征，因此，本文基于AIS 数据预处理，从轨迹特征
+的角度出发，设计了包含AIS 数据预处理、轨迹特征
+识别、网络拓扑构建和航路生成四个模块的航路网
+络提取模型( 其技术路线如图1 所示) 。
+1) AIS 数据预处理: 对AIS 数据进行清洗和重
+构，得到高质量轨迹数据;
+2) 轨迹特征识别: 从轨迹数据中识别出代表船
+舶航行特征的轨迹点;
+3) 网络拓扑构建: 根据被标记的特征点在空间
+上的分布建立水域航路网络拓扑图;
+4) 航路生成: 通过轨迹计算出各节点之间的中
+心线，提出一种垂线分治法确定网络中每条航路的
+具体范围，生成航道。
+图1
+技术路线图
+Fig．1
+Technology roadmap
+2
+航路网络提取模型
+2. 1
+AIS 数据预处理
+AIS 原始数据包含静态信息与动态信息，为了
+从AIS 数据中提取轨迹，按照国际电工委员会( In-
+ternational Electrotechnical Commission，IEC) 和国际
+电信联盟( International Telecommunication Union，
+ITU) 制定的规范
+［11-12］对原始AIS 数据进行解码和
+重构，并基于GUO 等
+［13-14］提出的方法对异常数据进
+行清洗，得到AIS 轨迹数据。
+设重构后的轨迹数据集为TS = { Ti
+i = 1，2，
+…，n} ，共包含n 条轨迹，Ti = { pi，j
+j = 1，2，…，m} 为
+其中的第i 条轨迹，m 为Ti 所包含的轨迹点数目，
+pi，j = ( pmmsi，t，plong，plat，vsog，ccog，hheading) 为Ti 中的第j
+个轨迹点。其字段含义按顺序依次为: 水上移动通
+3
+5
+1
+牟军敏，等: 基于AIS 数据的水域航路网络提取方法
+
+
+=== Page 3 ===
+信业务标识码( Maritime Mobile Service Identify，MM-
+SI) 、时间戳、经度、纬度、对地航速( Speed Over
+Ground，SOG ) 、对地航向( Course Over Ground，
+COG) 、艏向。
+2. 2
+轨迹特征识别
+2．2．1
+静止点识别
+当船舶静止时，其航速为0 或接近于0。因此，
+对于Ti 中的轨迹点pi，j，当该点和相邻点满足式( 1)
+时，则定义pi，j为静止点。
+vi，j ＜0. 5
+vi，j －vi，j－1
+ti，j －ti，j－1
+＜0. 2
+vi，j+1 －vi，j
+ti，j+1 －ti，j
+＜
+
+
+
+
+
+0. 2
+( 1)
+式中: vi，j表示第i 条轨迹中第j 个数据点的速度;
+vi，j －1表示第i 条轨迹中第j －1 个数据点的速度;
+vi，j + 1表示第i 条轨迹中第j + 1 个数据点的速度; ti，j
+表示点pi，j对应的时刻。
+2．2．2
+转向点识别
+虽然AIS 数据中包含航向数据，但是由于数据
+质量无法保证以及AIS 频率经常变化等原因，AIS
+数据中的航向角信息难以体现出船舶的转向特征。
+ＲONG 等
+［5］提出，可以通过DP( Douglas-Peucker) 轨
+迹压缩算法来完成对转向点的识别，其原理如图2
+所示，dmax为距离阈值。
+( a)
+( b)
+( c)
+( d)
+图2
+DP 算法识别转向点
+Fig．2
+Turning point identification using DP algorithm
+2. 3
+网络拓扑构建
+2．3．1
+节点提取
+设经过特征识别得到的PS 为静止点集合，PT
+为转向点集合。基于密度的聚类算法DBSCAN 能
+够从点集中筛选出低密度区域和高密度区域，并将
+低密度区域作为噪声进行过滤
+［15］。而AS ( Alpha
+Shapes) 算法作为一种快速、简单的边界提取算法能
+够有效从离散的空间有限点集中提取出边界轮廓，
+并且能够很好地应对点集在形状上出现的空洞、断
+裂、凹陷等情况
+［16］。节点提取过程如下:
+对于任意轨迹点pi∈PS，求出其ε 邻域Nε( pi)
+并将其邻域内点的个数记为
+Nε( pi)
+。当
+Nε( pi)
+≥Pmin时，pi 为核心点，并继续寻找其邻域
+范围内是否存在其他核心点，直到没有核心点为止，
+此时，可认为这些核心点与其邻域范围内的所有点
+构成了一个特征区。若pi 满足Nε( pi)
+＜Pmin，当
+其邻域范围内存在核心点时，pi 为边界点，否则为噪
+声点，Pmin为簇内数据点阈值，如图3 所示。
+图3
+DBSCAN 算法识别特征区中的点
+Fig．3
+Feature area point identification using DBSCAN
+algorithm
+当样本集为PS 时，得到的结果为静止区集合，
+记为AS = { Ai
+i = 1，2，…，A } ，A 为静止区个
+数，其中第i 个静止区描述为Ai = { pi，j
+j = 1，2，…，
+Ai } ，Ai 为该区点的数目，pi，j 为Ai 中的第j 个
+点。当样本集为PT 时，得到的结果为转向区集合，
+记为BT = { Bi
+i = 1，2，…，B } ，结构同理。
+得到特征区集合后，AS 算法类似用一个圆不断
+在点集上进行滚动的方法来发现边界，如图4 所示。
+以静止区Ai 为例，当其中的任意两点ai，j和ai，k满足
+d( ai，j，ai，k) ≤2α 时，过这两点绘制两个半径为α 的
+圆，AS 算法认为当其中至少有一个圆不包含Ai 中
+的其他点时，ai，j和ai，k 为边界点。当识别完所有的
+边界点后，建立边界点集合A边界与Ai 进行关联。转
+向区同理。
+图4
+AS 算法提取特征区边界
+Fig．4
+Feature area border extraction using AS algorithm
+4
+5
+1
+中
+国
+航
+海
+第46 卷第2 期
+
+
+=== Page 4 ===
+2．3．2
+边提取
+每个特征区都可以视作水域航路网络拓扑中的
+节点，假设有一条轨迹Ti，利用节点对轨迹进行划
+分，如图5 所示，可以得到4 段子轨迹: T1、T2、T3 和
+T4。每个子轨迹段都代表了从一个节点到另一个节
+点的路径。通过这种方式建立轨迹集TS 中每个轨
+迹Ti 的划分集Ti-sub，将轨迹与节点进行关联。
+图5
+轨迹划分
+Fig．5
+Trajectory segmentation
+如图6 所示，对于节点M 和节点N，设定阈值f
+判断M 和N 之间是否存在从M 到N 的频繁轨迹模
+式。令计数值c = 0，遍历所有轨迹的Ti-sub。当遇到
+一个起始节点为M 且终止节点为N 的子轨迹段时，
+c = c + 1。遍历完毕后，若c ＞f，表明从M 到N 之间
+的轨迹模式是频繁的，存在从M 到N 的一条航路。
+( a) 非频繁模式不建立边
+( b) 频繁模式建立边
+图6
+频繁轨迹模式
+Fig．6
+Frequent trajectory pattern
+对所有的节点进行两两频繁轨迹模式判断，最
+后即可确定出节点的边，完成水域航路网络拓扑的
+构建。
+2. 4
+航路生成
+2．4．1
+中心线提取
+节点间的轨迹通常具有不同的长度，轨迹点的
+数目也不相同。为了解决轨迹长度不匹配的问题，
+得到航路中心线，如图7 所示，使用DTW 算法对中
+心线进行提取
+［17-18］。
+图7
+DTW 算法提取中心线
+Fig．7
+Centerline extraction using DTW algorithm
+1) 对于两段轨迹序列T1 和T2，他们之间的相
+似度
+D( i，j)
+= dij +
+min{ D( i，j －1) ，D( i －1，j) ，D( i －1，j －1) }
+( 2)
+式中，dij为T1 中第i 个点与T2 中第j 个点之间的距
+离。计算的边界条件为D( 1，1) 和D( m，n) ，最终得
+到的相似度fDTW ( T1，T2) = D( m，n) 。在计算开始
+前，建立匹配索引集Z = ∅。计算D( m，n) 时，每选
+择一个D 值，将对应的索引值添加进Z。例如在一
+次计算时，选择了D( i －1，j) ，则向Z 中添加索引值
+( i －1，j) 。完成D( m，n) 的计算后，Z 记录了每次匹
+配所选择的T1 和T2 中的轨迹点。
+2) 从( 1，1) 开始按顺序从Z 中选择索引值，设
+第k 次的索引值为( i，j) ，则位于p1，i和p2，j两点连线
+中点的中心线轨迹点( 中心点)
+Ck =
+p1，i + p2，j
+2
+( 3)
+得到的当前中心线Lcenterline = { C1，C2，…，C
+Z } ，
+Z 为索引集中元素的个数。
+3) 得到中心线Lcenterline后，将其作为T1，再从轨
+迹集中选择一条未选择过的轨迹作为新的T2，继续
+执行上述过程，直到轨迹集中的所有轨迹都被选择
+过，此时的Lcenterline即为中心线。
+2．4．2
+航路范围确定
+为了确定节点间的航路范围，提出一种垂线分
+治法自动生成航路。设节点M 和节点N 具有从M
+到N 的频繁轨迹模式，提取的中心线为Lcenterline，垂
+线分治法确定航路范围的步骤如下:
+1) 对中心线进行分段，得到子轨迹段C1C2，
+C2C3，…，C
+Lcenterline －1 C
+Lcenterline ，Lcenterline 为中心点
+的个数，中心线分段的一个示例如图8 所示。然后
+对每个子轨迹段CiCi + 1执行后续步骤。
+图8
+中心线分段
+Fig．8
+Centerline segmentation
+5
+5
+1
+牟军敏，等: 基于AIS 数据的水域航路网络提取方法
+
+
+=== Page 5 ===
+2) 过所有轨迹点向轨迹段CiCi + 1作垂线，舍去
+垂足不在CiCi + 1线段上的轨迹点，计算剩余各点到
+中心线的距离，记入集合D 中，如图9 所示。
+图9
+垂线距离计算
+Fig．9
+Perpendicular distance calculation
+3) 设定宽度确定阈值。将D 中的距离值按从
+小到大的顺序排列，取阈值分位数对应的距离宽度
+作为航路宽度。并以CiCi + 1 的长度为长，其距离宽
+度为宽，构建子航路段，如图10 所示。
+图10
+构建子航路段
+Fig．10
+Sub-route segment construction
+4) 对于两个相邻的子航路段，以轨迹方向为参
+考，交界的四个点pi，left，pi，right，pi + 1，left，pi + 1，right的合并
+规则为
+Pleft =
+pi，left + pi+1，left
+2
+Pright =
+pi，right + pi+1，right
+{
+2
+( 4)
+式中: Pleft，Pright分别表示航路的左右侧范围; pi，left +
+pi + 1，left表示两个相邻子航路段位于轨迹左侧的数据
+点; pi，right + pi + 1，right表示两个相邻子航路段位于轨迹
+右侧的数据点。合并过程如图11 所示。将所有子
+航路段交界处的点进行合并，便可得到最终航道。
+3
+实例分析
+3. 1
+水域概况
+宁波—舟山港位于中国海岸线的中部、杭州湾
+南翼、浙江东北部沿海，地处中国海岸线与长江构成
+的“T 型结构”交汇点的南侧，是我国重要的集装箱
+远洋干线港。宁波—舟山港地理位置如图12 所示。
+本文选择了宁波舟山港2019 年5 月1 日至
+2019 年5 月31 日的AIS 数据( 121°43'．999E 至
+122°36'．899E ，29°38'．670N 至30°22'．728N ) 作为
+( a) 交界点合并
+( b) 生成航道
+图11
+合并子航路段
+Fig．11
+Sub-route segments merge
+图12
+宁波—舟山港位置
+Fig．12
+Location of Ningbo-Zhoushan Port
+研究对象。AIS 轨迹如图13 所示。为了排除不同
+类型船舶在水域内的空间密度分布以及AIS 频率的
+影响，本文从AIS 轨迹中单独筛选出货船数据做进
+一步分析。
+图13
+AIS 轨迹
+Fig．13
+AIS trajectory
+3. 2
+航路网络提取应用
+利用航路网络提取模型从货船数据中提取航路
+网络的结果如图14 所示。图14a 给出了特征点识
+别的结果，其中，在进行转向点识别时，根据所选水
+6
+5
+1
+中
+国
+航
+海
+第46 卷第2 期
+
+
+=== Page 6 ===
+域的尺度设置DP 算法的阈值为2 km。经过反复试
+验，当DBSCAN 的参数ε 为250 m 且Pmin为30 时，
+能够得到较好的特征点聚类效果，如图14b 所示。
+基于Python 下的alphashape 库提取得到的特征区如
+图14c 所示，由于该库会对输入点集进行标准化处
+理，为避免空洞、断裂、凹陷等情况的出现，设置参数
+α 为105。在构建网络拓扑图时，统计了所有节点之
+间的轨迹数目，并取其中的99 分位数作为频繁节点
+的判定阈值。为了与实际规划图中的双向航道进行
+对应，当同一对节点间存在两个方向的航路时，对其
+进行合并，如图14d 所示。得到的完整货船航路网
+络如图14e 所示，图14f 则给出了该港区的现状与
+规划情况。
+( a) 特征点
+( b) 特征点聚类结果
+( c) 特征区
+( d) 网络拓扑
+( e) 航路网络
+( f) 现状与规划图
+图14
+航路网络提取结果
+Fig．14
+Ｒoute network extraction results
+1) 对于特征识别结果，结合图14a ～图14c 可
+看出，港区的货船静止区除了分布在港口附近外，在
+远海也有分布，而货船转向区则主要分布在中部水
+域。将结果与图14f 进行对比，可以发现识别得到
+的大部分静止区基本符合港区现状，部分静止区虽
+然在一定程度上符合规划锚地的划定范围，但结果
+存在偏差。
+2) 对于航路网络构建，结合图14e、图14f 可以
+看出，港区中部的航路分布非常密集，并向四周延
+伸，所构建的航路网络基本符合航道现状和规划航
+道的分布情况，同时也提取出了其他航路。
+对于出现的偏差，如图15 所示，从沈家门港区
+到白泉港区存在多条未出现在图14f 中的习惯航
+路，从中提取出主要航路，其总长度为8. 31 n mile，
+平均航道宽度为0. 395 n mile( 见表1) 。这说明港
+航部门未能及时把握该水域的实际航路演化，而通
+过本文提出的模型可有效发现这类新的航路，为安
+全监管提供有力参考。
+图15
+沈家门港区至白泉港区习惯航路识别
+Fig．15
+Customary route identification from Shenjiamen
+Port to Baiquan Port
+7
+5
+1
+牟军敏，等: 基于AIS 数据的水域航路网络提取方法
+
+
+=== Page 7 ===
+表1
+沈家门港区至白泉港区主要航路坐标
+Tab．1
+Coordinates of the main route from
+Shenjiamen Port to Baiquan Port
+项目
+经度
+纬度
+航道中心
+122°20'．755E
+122°20'．804E
+122°20'．940E
+122°19'．436E
+29°59'．344N
+30°00'．336N
+30°03'．086N
+30°07'．456N
+边界1
+122°20'．612E
+122°20'．659E
+122°20'．640E
+122°19'．141E
+29°59'．349N
+30°00'．341N
+30°03'．031N
+30°07'．358N
+边界2
+122°20'．898E
+122°20'．950E
+122°21'．240E
+122°19'．731E
+29°59'．339N
+30°00'．331N
+30°03'．142N
+30°07'．554N
+3. 3
+航路规划验证
+3．3．1
+航路规划模块设计
+在提取航路网络的基础上，本文基于Python 编
+译环境下的Networkx 框架构建有向航路网络图，以
+特征区间的航路长度作为权值，使用Dijkstra 算法
+进行航路规划
+［19］，进一步验证航路网络的准确性。
+3．3．2
+航路规划结果
+本文选择北仑港—梅山港、北仑港—岑港、北仑
+港—白泉港、六横港—白泉港、穿山港—白泉港、金
+塘港—北仑港—六横港共六条货物运输路线。生成
+的货物运输路线如图16 所示。
+可以看出: 北仑港—梅山港货物运输路线是从
+北仑港区出发依次行经金塘水道、螺头水道、佛渡水
+道到达梅山港区的航线，与实际规划图所示航路一
+致; 北仑港—岑港货物运输路线是从北仑港区出发
+行经金塘水道附近新建航道后穿越册子水道到达岑
+港区的航线，与实际规划图中标定的航路大致相同。
+另外，从北仑港区、六横港区、穿山港区出发，到达白
+泉港区的规划路线都途经新建的航道———鱼山南部
+进港航道( 航道范围见表2) 。而从金塘港出发途经
+北仑港到六横港的推荐航路是行经金塘水道、螺头
+( a) 北仑港—梅山港
+( b) 北仑港—岑港
+( c) 北仑港—白泉港
+( d) 六横港—白泉港
+( e) 穿山港—白泉港
+( f) 金塘港—北仑港—六横港
+图16
+货物运输航路规划
+Fig．16
+Cargo transportation route planning
+表2
+鱼山南部进港航道规划
+Tab．2
+Incoming port waterway planning in the south of Yushan
+航道名称
+总航程/km
+航道规模
+航道宽度/m
+经度
+纬度
+规划说明
+鱼山南部
+进港航道
+19. 8
+5 万吨级双向
+500 ～800
+122°15'．185E
+122°10'．638E
+122°07'．805E
+122°04'．297E
+122°01'．685E
+29°36'．648N
+29°38'．063N
+29°39'．297N
+29°41'．822N
+29°42'．272N
+新建
+8
+5
+1
+中
+国
+航
+海
+第46 卷第2 期
+
+
+=== Page 8 ===
+水道后，从条帚门水道抵达六横港区的航线，也与实
+际规划图中的航路一致。这不仅从航路规划的角度
+验证了所提取航路网络的准确性和有效性，也以实
+际数据说明了及时更新宁波—舟山港区航路网络的
+重要性。
+4
+结束语
+本文提出了一种基于AIS 数据的水域航路网络
+提取方法。该方法首先对AIS 数据进行预处理，清
+洗了原始AIS 数据中的异常并重构得到了轨迹数
+据。然后从轨迹数据中利用航行参数和DP 算法识
+别出具有静止特征和转向特征的轨迹点。之后利用
+聚类算法和边界提取算法得到特征区的范围，生成
+拓扑中的节点，并进一步识别节点之间的频繁轨迹
+模式，提取出拓扑图中的边，构建水域航路网络拓
+扑。在此基础上，利用中心线提取算法和垂线分治
+法得到完整的水域航路网络。最后以宁波—舟山港
+AIS 数据为基础进行实例分析，结果表明该方法不
+仅能够准确提取出水域航路网络，还能发现未在监
+管中的习惯航路，助力港航部门掌握水域航路网络
+演化规律。同时提取得到的航路网络还可用来开展
+航路规划应用，充分说明了该方法的准确性、有效性
+和实用性。
+目前该研究仅从宏观上对水域航路网络进行分
+析提取，下一步将缩小研究尺度，从中观和微观层面
+进一步改进方法，并考虑航行成本等因素改进路径
+规划模块。
+参
+考
+文
+献
+［1］SVANBEＲG M，SANTÉN V，HÖＲTEBOＲN A，et al．
+AIS in maritime research［J］．Marine Policy，2019，
+106: 103520．
+［2］陈宏昆，察豪，刘立国，等．基于船舶自动识别系统
+信息和Hough 变换的海上船舶航道提取［J］．计算机
+应用，2018，38( 11) : 3332-3335．
+CHEN H K，CHA H，LIU L G，et al．Vessel traffic
+pattern extraction
+based
+on
+automatic
+identification
+system data and Hough transformation［J］．Journal of
+Computer Applications．2018，38 ( 11 ) : 3332-3335．
+( in Chinese)
+［3］牛敬华，马良荔，覃基伟．基于网格的航道模式提取
+算法研究［J］．舰船电子工程，2019，39( 4) : 94-99．
+NIU J H，MA L L，QIN J W．Ｒesearch on sea route
+extraction algorithm based on grid［J］．Ship Electronic
+Engineering，2019，39( 4) : 94-99．( in Chinese)
+［4］FILIPIAK D，WECEL K，STＲÓ ~ZYNA M，et al．
+Extracting maritime traffic networks from AIS data using
+evolutionary algorithm ［J］．
+Business ＆Information
+Systems Engineering，2020，62( 5) : 435-450．
+［5］ＲONG H，TEIXEIＲA A P，GUEDES SOAＲES C．Data
+mining approach to shipping route characterization and
+anomaly detection based on AIS data ［J］．
+Ocean
+Engineering，2020，198: 106936．
+［6］YAN Z J，XIAO Y J，CHENG L，et al．Exploring AIS
+data for intelligent maritime routes extraction ［J］．
+Applied Ocean Ｒesearch，2020，101: 102271．
+［7］肖潇，邵哲平，潘家财，等．基于AIS 信息的船舶轨
+迹聚类模型及应用［J］．中国航海，2015，38 ( 2) :
+82-86．
+XIAO X，SHAO Z P，PAN J C，et al．Ship trajectory
+clustering model based on AIS data and its application
+［J］．Navigation of China，2015，38( 2) : 82-86．( in
+Chinese)
+［8］王加胜，刘永学，杨昆，等．基于空间聚类分析的南
+海主要航线提取方法［J］．交通运输工程学报，
+2016，16( 6) : 91-98．
+WANG J S，LIU Y X，YANG K，et al．
+Extraction
+method of main routes in South China Sea based on
+spatial cluster analysis ［J］．
+Journal of Traffic and
+Transportation Engineering，2016，16( 6) : 91-98．( in
+Chinese)
+［9］LEE J S，SON W J，LEE H T，et al．Verification of
+novel maritime route extraction using kernel density
+estimation analysis with automatic identification system
+data［J］．Journal of Marine Science and Engineering，
+2020，8( 5) : 375．
+［10］KONDO
+M，FUJISAKA
+T，INAISHI
+M．
+Ｒoute
+extraction using AIS data and image processing［J］．The
+Journal of Japan Institute of Navigation，2010，122．
+［11］International
+Electrotechnical
+Commission
+( IEC ) ．
+Maritime navigation and radiocommunication equipment
+and systems-Digital interfaces-Part 1: single talker and
+multiple
+listeners:
+IEC
+61162-1 ［S ］．
+Geneva:
+IEC，2016．
+［12］International
+Telecommunication
+Union
+( ITU ) ．
+Technical characteristics for an automatic identification
+system using time division multiple access in the VHF
+maritime mobile frequency band: recommendation ITU-Ｒ
+M．1371-5［S］．Geneva: ITU，2014．
+［13］GUO S Q，MOU J M，CHEN L Y，et al．An anomaly
+9
+5
+1
+牟军敏，等: 基于AIS 数据的水域航路网络提取方法
+
+
+=== Page 9 ===
+detection method for AIS trajectory based on kinematic
+interpolation ［J］．
+Journal
+of
+Marine
+Science
+and
+Engineering，2021，9( 6) : 609．
+［14］GUO S Q，MOU J M，CHEN L Y，et al．Improved
+kinematic interpolation for AIS trajectory reconstruction
+［J］．Ocean Engineering，2021，234: 109256．
+［15］ESTEＲM，KＲIEGEL H P，SANDEＲJ，et al．
+A
+density-based algorithm for discovering clusters in large
+spatial databases with noise［C］∥AAAI．Proceedings of
+the
+Second
+International
+Conference
+on
+Knowledge
+Discovery and Data Mining．Washington D．C．: AAAI
+Press，1996: 226-231．
+［16］EDELSBＲUNNEＲH，KIＲKPATＲICK D，SEIDEL Ｒ．
+On the shape of a set of points in the plane［J］．IEEE
+Transactions on Information Theory，1983，29( 4) : 551-
+559．
+［17］ＲONG H，TEIXEIＲA A P，SOAＲES C G．
+Ship
+trajectory uncertainty prediction based on a Gaussian
+Process model［J］．
+Ocean Engineering，2019，182:
+499-511．
+［18］BELLMAN Ｒ，KALABA
+Ｒ．
+On
+adaptive
+control
+processes［J］．IＲE Transactions on Automatic Control，
+1959，4( 2) : 1-9．
+［19］DIJKSTＲA E W．A note on two problems in connexion
+with graphs［J］．Numerische Mathematik，1959，1( 1) :
+■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+269-271．
+( 上接第150 页)
+CHEN X．
+Ｒesearch on multi-objective route planning
+and task allocation algorithm for UAVs［D］．Nanjing:
+Nanjing University，2018．( in Chinese)
+［15］向明哲．基于改进蚁群算法的旅行商问题优化研究
+［D］．秦皇岛: 燕山大学，2021．
+XIANG M Z．Optimization research of traveling salesman
+problem based on improved ant colony algorithm［D］．
+Qinhuangdao: Yanshan University，2021．( in Chinese)
+［16］刘景森，李煜．现代启发式优化方法及其应用［M］．
+北京: 中国经济出版社，2020．
+LIU J S，LI Y．Modern heuristic optimization methods
+and applications ［M］．Beijing: China Economic Press，
+2020．( in Chinese)
+［17］柯良军．蚁群智能优化方法及其应用［M］．北京: 清
+华大学出版社，2017．
+KE L J．Ant colony intelligence optimization method and
+its
+applications［M］．
+Beijing:
+Tsinghua
+University
+Press，2017．( in Chinese)
+［18］张进，郭浩，陈统．基于可适应匈牙利算法的武器-目
+标分配问题［J］．兵工学报，2021，42( 6) : 1339-1344．
+ZHANG J，GUO H，CHEN T．Weapon-target assignment
+based on adaptable hungarian algorithm ［J］．
+Acta
+Armamentarii，2021，42( 6) : 1339-1344．( in Chinese)
+［19］ZHU Q Q，ZHANG Y N，LI Z Q，et al．
+Oil spill
+contextual and boundary-supervised detection network
+based on marine SAＲimages［J］．IEEE Transactions on
+Geoscience and Ｒemote Sensing，2022，60: 1-10．
+［20］李颖，张照亿，刘瑀，等．重大海上溢油事故应急处置
+辅助决策方法［J］．大连海事大学学报，2019，45
+( 2) : 108-112．
+LI Y，ZHANG Z Y，LIU Y，et al．Auxiliary decision-
+making method for emergency disposal of major marine
+oil spill accidents ［J］．
+Journal of Dalian Maritime
+University，2019，45( 2) : 108-112．( in Chinese)
+［21］XUE K，HUANG Z Q，WANG P，et al．
+An exact
+algorithm for
+task
+allocation
+of
+multiple
+unmanned
+surface vehicles with minimum task time［J］．Journal of
+Marine Science and Engineering，2021，9 ( 8 )
+:
+168-179．
+［22］靳志宏，计明军．现代优化技术［M］．大连: 大连海
+事大学出版社，2017: 130-140．
+JIN Z H，JI M J．Modern optimization technology［M］．
+Dalian: Dalian Maritime University Press，2017: 130-
+140．( in Chinese)
+［23］余胜威．MATLAB 优化算法案例分析与应用［M］．
+北京: 清华大学出版社，2014: 272-291．
+YU S W．
+Case analysis and application of MATLAB
+optimization
+algorithm［M］．
+Beijing:
+Tsinghua
+University Press，2014: 272-291．( in Chinese)
+［24］谷稳．基于进化匈牙利算法的目标分配问题研究及
+应用［D］．西安: 西安电子科技大学，2013．
+GU W．A study and application of target allocation based
+on evolution hungary algorithm［D］．
+Xi’an:
+Xidian
+University，2013．( in Chinese)
+［25］童帮裕，胡坚堃．基于改进蚁群算法的船舶冰区航行
+路径规划［J］．中国航海，2020，43( 1) : 24-28．
+TONG B Y，HU J K．Improved ant colony optimization
+for navigation path planning in ice zone［J］．Navigation
+of China，2020，43( 1) : 24-28．( in Chinese)
+0
+6
+1
+中
+国
+航
+海
+第46 卷第2 期
+
+
