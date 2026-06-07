@@ -1,0 +1,62 @@
+[
+  {
+    "name": "无效坐标(999,999)",
+    "expected": "应返回错误提示",
+    "passed": true,
+    "error": null
+  },
+  {
+    "name": "起终点相同",
+    "expected": "应返回同一节点错误",
+    "passed": true,
+    "error": null
+  },
+  {
+    "name": "极端船型(超大型油轮)",
+    "expected": "应返回RELAXED兜底路径或合理错误",
+    "passed": true,
+    "error": null
+  },
+  {
+    "name": "未知船型",
+    "expected": "应回退默认模板正常规划或合理错误",
+    "passed": true,
+    "error": null
+  },
+  {
+    "name": "远离航道坐标",
+    "expected": "应返回snap距离过远错误",
+    "passed": true,
+    "error": null
+  },
+  {
+    "name": "缺少必要参数",
+    "expected": "应返回参数错误提示",
+    "passed": true,
+    "error": null
+  },
+  {
+    "name": "负数坐标",
+    "expected": "应返回snap距离过远错误",
+    "passed": true,
+    "error": null
+  },
+  {
+    "name": "零距离(起终点极近)",
+    "expected": "应正常处理或返回同一节点提示",
+    "passed": true,
+    "error": null
+  },
+  {
+    "name": "字符串坐标",
+    "expected": "应返回坐标格式错误",
+    "passed": true,
+    "error": null
+  },
+  {
+    "name": "null坐标",
+    "expected": "应返回参数错误提示",
+    "passed": true,
+    "error": null
+  }
+]

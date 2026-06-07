@@ -1,0 +1,1480 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>水上航道智能路径规划系统</title>
+<link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/leaflet/1.9.4/leaflet.css" />
+<script src="https://cdn.bootcdn.net/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<style>
+:root {
+  --bg-deep: #040b18;
+  --bg-sidebar: #0a1428;
+  --bg-card: #0f1d32;
+  --bg-surface: rgba(10, 20, 40, 0.82);
+  --bg-elevated: rgba(15, 29, 50, 0.92);
+  --border-subtle: rgba(79, 195, 247, 0.06);
+  --border-light: rgba(79, 195, 247, 0.12);
+  --border-hover: rgba(79, 195, 247, 0.25);
+  --border-active: rgba(79, 195, 247, 0.45);
+  --accent-primary: #4fc3f7;
+  --accent-primary-dim: rgba(79, 195, 247, 0.12);
+  --accent-start: #00b894;
+  --accent-start-dim: rgba(0, 184, 148, 0.15);
+  --accent-end: #ff6b6b;
+  --accent-end-dim: rgba(255, 107, 107, 0.15);
+  --accent-ship: #ff9f43;
+  --accent-route1: #00b894;
+  --accent-route2: #4fc3f7;
+  --accent-route3: #ff9f43;
+  --accent-route4: #e84393;
+  --text-primary: #e0e6f0;
+  --text-secondary: #8ba4c4;
+  --text-muted: #4a6a8a;
+  --text-dim: #2a4a6a;
+  --font-display: 'Bai Jamjuree', sans-serif;
+  --font-body: 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Consolas', 'Microsoft YaHei Mono', monospace;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --shadow-glow: 0 0 24px rgba(79, 195, 247, 0.12);
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.35);
+  --shadow-elevated: 0 8px 40px rgba(0, 0, 0, 0.45);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-body);
+  font-weight: 400;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ===== Dark Map Tiles (Gaode night style, muted roads) ===== */
+.dark-tiles .leaflet-tile-pane {
+  filter: contrast(1.08) saturate(1.1);
+}
+.dark-tiles .leaflet-control-attribution {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* ===== Scrollbar ===== */
+.input-section::-webkit-scrollbar { width: 4px; }
+.input-section::-webkit-scrollbar-track { background: transparent; }
+.input-section::-webkit-scrollbar-thumb { background: var(--text-dim); border-radius: 4px; }
+.input-section::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ===== Sidebar ===== */
+.sidebar {
+  width: 400px;
+  min-width: 400px;
+  background: linear-gradient(180deg, #0a1428 0%, #0c1836 50%, #0a1225 100%);
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(79, 195, 247, 0.15);
+  z-index: 1000;
+  position: relative;
+  animation: sidebarSlideIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  box-shadow: 4px 0 30px rgba(0, 0, 0, 0.4), inset -1px 0 20px rgba(79, 195, 247, 0.03);
+}
+@keyframes sidebarSlideIn {
+  0% { transform: translateX(-100%); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+.sidebar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(79, 195, 247, 0.015) 2px,
+    rgba(79, 195, 247, 0.015) 4px
+  );
+}
+
+.sidebar-header {
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid rgba(79, 195, 247, 0.1);
+  background: linear-gradient(135deg, rgba(4, 11, 24, 0.95) 0%, rgba(15, 30, 55, 0.8) 50%, rgba(10, 20, 40, 0.9) 100%);
+  position: relative;
+  overflow: hidden;
+}
+.sidebar-header::before {
+  content: '';
+  position: absolute;
+  top: -60%;
+  left: -40%;
+  width: 180%;
+  height: 200%;
+  background: radial-gradient(ellipse at 35% 40%, rgba(79, 195, 247, 0.08) 0%, transparent 55%);
+  pointer-events: none;
+}
+.sidebar-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 20%;
+  right: 20%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(79, 195, 247, 0.3), transparent);
+}
+.sidebar-header h1 {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent-primary);
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+}
+.sidebar-header h1 .icon {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, #0288d1 0%, #4fc3f7 60%, #81d4fa 100%);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  box-shadow: 0 0 24px rgba(79, 195, 247, 0.3), inset 0 -2px 4px rgba(0,0,0,0.2), inset 0 2px 4px rgba(255,255,255,0.15);
+}
+.sidebar-header .subtitle {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-top: 4px;
+  letter-spacing: 0.3px;
+  position: relative;
+}
+
+/* ===== Input Section ===== */
+.input-section {
+  padding: 18px 24px;
+  flex: 1;
+  overflow-y: auto;
+}
+.input-section > div {
+  margin-bottom: 18px;
+  animation: fadeUp 0.5s ease both;
+}
+.input-section > div:nth-child(1) { animation-delay: 0.1s; }
+.input-section > div:nth-child(2) { animation-delay: 0.18s; }
+.input-section > div:nth-child(3) { animation-delay: 0.26s; }
+.input-section > div:nth-child(4) { animation-delay: 0.34s; }
+@keyframes fadeUp {
+  0% { transform: translateY(12px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+.section-label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.section-label .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.section-label .dot.start { background: var(--accent-start); box-shadow: 0 0 8px var(--accent-start); }
+.section-label .dot.end { background: var(--accent-end); box-shadow: 0 0 8px var(--accent-end); }
+.section-label .dot.ship { background: var(--accent-ship); box-shadow: 0 0 8px var(--accent-ship); }
+
+.coord-row { display: flex; gap: 10px; }
+.coord-group { flex: 1; }
+.coord-group label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 5px;
+  letter-spacing: 0.3px;
+}
+.coord-group input {
+  width: 100%;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, rgba(18, 32, 58, 0.7) 0%, rgba(14, 26, 48, 0.6) 100%);
+  border: 1px solid rgba(79, 195, 247, 0.15);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  outline: none;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+.coord-group input::placeholder { color: var(--text-dim); font-weight: 400; }
+.coord-group input:focus {
+  border-color: var(--accent-primary);
+  background: rgba(22, 39, 68, 0.7);
+  box-shadow: 0 0 0 3px var(--accent-primary-dim), inset 0 1px 0 rgba(79, 195, 247, 0.05);
+}
+.coord-group input.highlight-start {
+  border-color: var(--accent-start);
+  box-shadow: 0 0 0 3px var(--accent-start-dim);
+}
+.coord-group input.highlight-start:focus {
+  border-color: var(--accent-start);
+  box-shadow: 0 0 0 3px var(--accent-start-dim);
+  background: rgba(22, 39, 68, 0.7);
+}
+.coord-group input.highlight-end {
+  border-color: var(--accent-end);
+  box-shadow: 0 0 0 3px var(--accent-end-dim);
+}
+.coord-group input.highlight-end:focus {
+  border-color: var(--accent-end);
+  box-shadow: 0 0 0 3px var(--accent-end-dim);
+  background: rgba(22, 39, 68, 0.7);
+}
+
+.pick-mode { display: flex; gap: 8px; margin-bottom: 10px; }
+.pick-btn {
+  flex: 1;
+  padding: 9px 10px;
+  border: 1px solid rgba(79, 195, 247, 0.12);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, rgba(18, 32, 58, 0.6) 0%, rgba(14, 26, 48, 0.5) 100%);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  position: relative;
+  overflow: hidden;
+}
+.pick-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(255,255,255,0.06) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.pick-btn:hover::after { opacity: 1; }
+.pick-btn:hover { background: rgba(22, 39, 68, 0.8); border-color: var(--border-hover); transform: translateY(-1px); }
+.pick-btn:active { transform: translateY(0); }
+.pick-btn.active-start {
+  background: var(--accent-start-dim);
+  border-color: var(--accent-start);
+  color: var(--accent-start);
+  box-shadow: 0 0 16px rgba(0, 184, 148, 0.12);
+}
+.pick-btn.active-end {
+  background: var(--accent-end-dim);
+  border-color: var(--accent-end);
+  color: var(--accent-end);
+  box-shadow: 0 0 16px rgba(255, 107, 107, 0.12);
+}
+.pick-mode-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 0;
+  letter-spacing: 0.2px;
+}
+
+.select-wrapper { position: relative; }
+.select-wrapper select {
+  width: 100%;
+  padding: 10px 12px;
+  padding-right: 32px;
+  background: linear-gradient(135deg, rgba(18, 32, 58, 0.7) 0%, rgba(14, 26, 48, 0.6) 100%);
+  border: 1px solid rgba(79, 195, 247, 0.15);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 400;
+  appearance: none;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+.select-wrapper select:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-primary-dim);
+  background: rgba(22, 39, 68, 0.7);
+}
+.select-wrapper select:hover { border-color: var(--border-hover); }
+.select-wrapper::after {
+  content: '▼';
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--accent-primary);
+  font-size: 9px;
+  pointer-events: none;
+  transition: transform 0.2s;
+}
+.select-wrapper select:focus + ::after { transform: translateY(-50%) rotate(180deg); }
+
+.show-nodes-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-weight: 400;
+  transition: color 0.2s;
+  padding: 4px 0;
+}
+.show-nodes-row:hover { color: var(--text-secondary); }
+.show-nodes-row input[type=checkbox] {
+  accent-color: var(--accent-primary);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+/* ===== Button ===== */
+.btn-plan {
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(135deg, #0288d1 0%, #0097e6 50%, #0277bd 100%);
+  border: none;
+  border-radius: var(--radius-md);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 2px;
+  transition: all 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  margin-top: 8px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(2, 136, 209, 0.3), inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -1px 0 rgba(0,0,0,0.15);
+}
+.btn-plan::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -120%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+  transform: skewX(-20deg);
+  transition: left 0.7s ease;
+}
+.btn-plan:hover::before { left: 140%; }
+.btn-plan:hover {
+  background: linear-gradient(135deg, #03a9f4 0%, #29b6f6 40%, #039be5 100%);
+  box-shadow: 0 6px 30px rgba(2, 136, 209, 0.45), 0 0 40px rgba(79, 195, 247, 0.15), inset 0 1px 0 rgba(255,255,255,0.18);
+  transform: translateY(-2px) scale(1.01);
+}
+.btn-plan:active { transform: translateY(0); box-shadow: 0 2px 12px rgba(2, 136, 209, 0.25); }
+.btn-plan:disabled {
+  background: rgba(30, 58, 95, 0.6);
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+  color: var(--text-dim);
+}
+.btn-plan:disabled::before { display: none; }
+.btn-plan .spinner {
+  display: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+.btn-plan.loading .spinner { display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== Map ===== */
+.map-container {
+  flex: 1;
+  position: relative;
+  animation: mapFadeIn 0.8s ease 0.2s both;
+}
+@keyframes mapFadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+#map { width: 100%; height: 100%; cursor: crosshair; background: #0a1628; }
+
+/* ===== Map Mode Indicator ===== */
+.map-mode-indicator {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 20px;
+  border-radius: 24px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  z-index: 999;
+  display: none;
+  backdrop-filter: blur(16px) saturate(1.4);
+  animation: dropDown 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes dropDown {
+  0% { transform: translateX(-50%) translateY(-10px); opacity: 0; }
+  100% { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+.map-mode-indicator.start-mode {
+  display: block;
+  background: rgba(0, 184, 148, 0.12);
+  border: 1px solid rgba(0, 184, 148, 0.3);
+  color: var(--accent-start);
+}
+.map-mode-indicator.end-mode {
+  display: block;
+  background: rgba(255, 107, 107, 0.12);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  color: var(--accent-end);
+}
+
+/* ===== Info Banner ===== */
+.info-banner {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-elevated);
+  backdrop-filter: blur(16px) saturate(1.3);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 10px 18px;
+  z-index: 999;
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: none;
+  animation: dropDown 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.info-banner.show { display: block; }
+
+/* ===== Legend ===== */
+.legend {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: linear-gradient(180deg, rgba(10, 22, 42, 0.94) 0%, rgba(8, 18, 36, 0.92) 100%);
+  backdrop-filter: blur(18px) saturate(1.4);
+  border: 1px solid rgba(79, 195, 247, 0.12);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  z-index: 999;
+  font-size: 11px;
+  display: none;
+  min-width: 140px;
+  animation: fadeUp 0.3s ease both;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+.legend.show { display: block; }
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+}
+.legend-item:last-child { margin-bottom: 0; }
+.legend-line { width: 24px; height: 3px; border-radius: 3px; }
+
+/* ===== Results Panel ===== */
+.results-panel {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  right: 20px;
+  background: linear-gradient(180deg, rgba(10, 22, 42, 0.96) 0%, rgba(8, 18, 36, 0.95) 100%);
+  backdrop-filter: blur(24px) saturate(1.5);
+  border: 1px solid rgba(79, 195, 247, 0.12);
+  border-radius: var(--radius-lg);
+  padding: 0;
+  display: none;
+  z-index: 999;
+  max-height: 280px;
+  overflow-y: auto;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5), 0 0 1px rgba(79, 195, 247, 0.08) inset;
+}
+.results-panel.show {
+  display: block;
+  animation: panelSlideUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes panelSlideUp {
+  0% { transform: translateY(30px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.results-panel::-webkit-scrollbar { width: 3px; }
+.results-panel::-webkit-scrollbar-track { background: transparent; }
+.results-panel::-webkit-scrollbar-thumb { background: var(--text-dim); border-radius: 3px; }
+
+.results-panel-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-light);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  background: rgba(10, 20, 40, 0.95);
+  backdrop-filter: blur(12px);
+  z-index: 1;
+}
+.results-panel-header .close-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+.results-panel-header .close-btn:hover { color: var(--text-primary); background: rgba(79, 195, 247, 0.1); }
+
+.route-cards {
+  display: flex;
+  gap: 10px;
+  padding: 12px 18px;
+}
+.route-card {
+  flex: 1;
+  background: linear-gradient(135deg, rgba(18, 32, 58, 0.5) 0%, rgba(12, 24, 44, 0.4) 100%);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  min-width: 0;
+}
+.route-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+.route-card.active {
+  border-color: var(--accent-primary);
+  background: linear-gradient(135deg, rgba(79, 195, 247, 0.1) 0%, rgba(2, 136, 209, 0.08) 100%);
+  box-shadow: 0 0 24px rgba(79, 195, 247, 0.12), inset 0 0 20px rgba(79, 195, 247, 0.04);
+}
+.route-card .route-name {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.route-card .route-name .color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.route-card .stat-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+.route-card .stat-row .stat-val {
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.node-list { padding: 0 18px 14px; display: none; }
+.node-list.show { display: block; }
+.node-list-title { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; }
+.node-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.node-chip {
+  background: rgba(15, 29, 50, 0.6);
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 10px;
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  transition: all 0.2s;
+}
+.node-chip:hover {
+  border-color: var(--accent-primary);
+  background: rgba(79, 195, 247, 0.06);
+}
+
+/* ===== Error Toast ===== */
+.error-toast {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  background: rgba(60, 15, 15, 0.9);
+  backdrop-filter: blur(12px) saturate(1.3);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  color: #ff8a80;
+  padding: 14px 20px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  z-index: 9999;
+  display: none;
+  animation: slideInRight 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+}
+.error-toast.show { display: block; }
+@keyframes slideInRight {
+  0% { transform: translateX(40px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+/* ===== Node Count Badge ===== */
+.node-count-badge {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  background: var(--bg-surface);
+  backdrop-filter: blur(12px) saturate(1.3);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 5px 12px;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  z-index: 998;
+}
+
+/* ===== Route Flow Animation ===== */
+@keyframes routeDraw {
+  0% { stroke-dashoffset: var(--path-length); }
+  100% { stroke-dashoffset: 0; }
+}
+@keyframes routeFlowDash {
+  0% { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: -40; }
+}
+.route-path-draw {
+  animation: routeDraw 2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.route-path-flow {
+  animation: routeFlowDash 0.8s linear infinite;
+}
+
+/* ===== Leaflet Overrides ===== */
+.leaflet-control-zoom a {
+  background: rgba(10, 20, 40, 0.85) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-light) !important;
+  backdrop-filter: blur(8px);
+  transition: all 0.2s;
+}
+.leaflet-control-zoom a:hover { background: rgba(15, 29, 50, 0.95) !important; }
+.leaflet-control-attribution {
+  background: rgba(10, 20, 40, 0.6) !important;
+  color: var(--text-dim) !important;
+  font-size: 10px !important;
+  backdrop-filter: blur(4px);
+}
+.leaflet-popup-content-wrapper {
+  background: rgba(10, 20, 40, 0.95) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-light) !important;
+  border-radius: var(--radius-sm) !important;
+  backdrop-filter: blur(12px);
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+.leaflet-popup-tip {
+  background: rgba(10, 20, 40, 0.95) !important;
+  border: 1px solid var(--border-light) !important;
+}
+.leaflet-popup-close-button { color: var(--text-muted) !important; }
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+  body { flex-direction: column; }
+  .sidebar { width: 100%; min-width: 100%; max-height: 45vh; animation: none; }
+  .map-container { height: 55vh; animation: none; }
+  .results-panel { left: 12px; right: 12px; bottom: 12px; }
+  .route-cards { flex-direction: column; }
+}
+/* ===== Scanline Input Effect ===== */
+.coord-group input:focus::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
+}
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1><span class="icon">⛵</span>水上航道智能路径规划</h1>
+    <div class="subtitle">Waterway Intelligent Path Planning System</div>
+  </div>
+
+  <div class="input-section">
+    <div class="show-nodes-row" title="在地图上显示所有拓扑节点作为参考">
+      <input type="checkbox" id="show-nodes" checked onchange="toggleTopoNodes()"> 显示拓扑节点（参考点）
+    </div>
+
+    <div>
+      <div class="section-label"><span class="dot start"></span>起点位置</div>
+      <div class="pick-mode">
+        <button class="pick-btn active-start" id="pick-start-btn" onclick="setPickMode('start')">📍 点击地图选起点</button>
+        <button class="pick-btn" id="pick-end-btn" onclick="setPickMode('end')">📍 点击地图选终点</button>
+      </div>
+      <div class="pick-mode-hint" id="pick-hint">当前：在地图上点击选择 <b style="color:var(--accent-start);">起点</b></div>
+      <div class="coord-row">
+        <div class="coord-group">
+          <label>纬度 Latitude</label>
+          <input type="text" id="start-lat" placeholder="点击地图选择或手动输入" class="highlight-start">
+        </div>
+        <div class="coord-group">
+          <label>经度 Longitude</label>
+          <input type="text" id="start-lon" placeholder="点击地图选择或手动输入" class="highlight-start">
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label"><span class="dot end"></span>终点位置</div>
+      <div class="coord-row">
+        <div class="coord-group">
+          <label>纬度 Latitude</label>
+          <input type="text" id="end-lat" placeholder="点击地图选择或手动输入" class="highlight-end">
+        </div>
+        <div class="coord-group">
+          <label>经度 Longitude</label>
+          <input type="text" id="end-lon" placeholder="点击地图选择或手动输入" class="highlight-end">
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label"><span class="dot ship"></span>船舶类型</div>
+      <div class="select-wrapper">
+        <select id="ship-type">
+          <option value="">加载中...</option>
+        </select>
+      </div>
+    </div>
+
+    <button class="btn-plan" id="btn-plan" onclick="doPlan()">
+      <span class="spinner"></span>开始路径规划
+    </button>
+
+    <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border-light);">
+      <div class="section-label" style="margin-bottom:8px;"><span class="dot" style="background:#6c5ce7;"></span>轨迹回放</div>
+      <button class="btn-plan" id="btn-replay" onclick="startReplay()" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe);">
+        <span id="replay-icon">▶</span>播放轨迹
+      </button>
+      <button class="btn-plan" id="btn-stop-replay" onclick="stopReplay()" style="display:none; background:linear-gradient(135deg,#e17055,#d63031);">
+        ■ 停止
+      </button>
+      <div style="margin-top:8px;">
+        <label style="color:var(--text-secondary); font-size:11px;">速度: <span id="speed-val">10</span></label>
+        <input type="range" id="replay-speed" min="1" max="50" value="10" oninput="document.getElementById('speed-val').textContent=this.value" style="width:100%; accent-color:var(--accent-primary);">
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="map-container">
+  <div id="map"></div>
+
+  <div class="map-mode-indicator start-mode" id="map-indicator">🟢 点击地图选择起点</div>
+
+  <div class="info-banner" id="info-banner">
+    💡 可在地图上直接点击选择起终点，也可手动输入GPS坐标
+  </div>
+
+  <div class="legend" id="legend">
+    <div class="legend-item"><span class="legend-line" style="background:var(--accent-route1);"></span> 距离最短线路</div>
+    <div class="legend-item"><span class="legend-line" style="background:var(--accent-route2);"></span> 时间最短线路</div>
+    <div class="legend-item"><span class="legend-line" style="background:var(--accent-route3);"></span> 综合最优线路</div>
+    <div class="legend-item"><span class="legend-line" style="background:var(--accent-route4);"></span> 通航频次最高线路</div>
+    <div class="legend-item" style="margin-top:4px; color:var(--text-muted); font-size:10px;">● 途经节点</div>
+  </div>
+
+  <div class="node-count-badge" id="node-count-badge" style="display:none;">节点: 0</div>
+
+  <div class="results-panel" id="results-panel">
+    <div class="results-panel-header">
+      <span>规划结果</span>
+      <button class="close-btn" onclick="hideResults()">✕</button>
+    </div>
+    <div class="route-cards" id="route-cards"></div>
+    <div class="node-list" id="node-list">
+      <div class="node-list-title">途经节点序列</div>
+      <div class="node-chips" id="node-chips"></div>
+    </div>
+  </div>
+</div>
+
+<div class="error-toast" id="error-toast"></div>
+
+<script>
+const ROUTE_COLORS = ['#00b894', '#4fc3f7', '#ff9f43', '#e84393'];
+
+let map, startPreviewMarker, endPreviewMarker, routeLayers = [], flowLayers = [], nodeMarkers = [];
+let topoNodesLayer = null, allTopoNodes = [];
+let allRoutes = [], activeRoute = 0;
+let pickMode = 'start';
+let startSnapLine = null, endSnapLine = null;
+let startMatchedMarker = null, endMatchedMarker = null;
+let startMatchedNode = null, endMatchedNode = null;
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function findNearestNodeJS(lat, lon) {
+  if (!allTopoNodes.length) return null;
+  let minDist = Infinity, nearest = null;
+  for (const n of allTopoNodes) {
+    const d = haversine(lat, lon, n.lat, n.lon);
+    if (d < minDist) { minDist = d; nearest = n; }
+  }
+  return { node: nearest, distKm: (minDist / 1000).toFixed(2) };
+}
+
+function simplifyPath(points, tolerance) {
+  if (points.length <= 2) return points;
+  const sqTol = tolerance * tolerance;
+  let maxDist = 0, maxIdx = 0;
+  const first = points[0], last = points[points.length - 1];
+  for (let i = 1; i < points.length - 1; i++) {
+    const dx = last[0] - first[0], dy = last[1] - first[1];
+    const d = Math.abs(dy * points[i][0] - dx * points[i][1] + last[0] * first[1] - last[1] * first[0]);
+    if (d > maxDist) { maxDist = d; maxIdx = i; }
+  }
+  if (maxDist > sqTol) {
+    const left = simplifyPath(points.slice(0, maxIdx + 1), tolerance);
+    const right = simplifyPath(points.slice(maxIdx), tolerance);
+    return left.slice(0, -1).concat(right);
+  }
+  return [first, last];
+}
+
+/* ===== WGS-84 ↔ GCJ-02 坐标转换（火星坐标系纠偏） ===== */
+// 高德瓦片使用 GCJ-02，但后端数据是 WGS-84，需要转换才能对齐
+function wgs84_to_gcj02(lat, lon) {
+  const a = 6378245.0;
+  const ee = 0.00669342162296594323;
+  const pi = Math.PI;
+
+  function transformLat(x, y) {
+    let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+    ret += (20.0 * Math.sin(6.0 * x * pi) + 20.0 * Math.sin(2.0 * x * pi)) * 2.0 / 3.0;
+    ret += (20.0 * Math.sin(y * pi) + 40.0 * Math.sin(y / 3.0 * pi)) * 2.0 / 3.0;
+    ret += (160.0 * Math.sin(y / 12.0 * pi) + 320 * Math.sin(y * pi / 30.0)) * 2.0 / 3.0;
+    return ret;
+  }
+
+  function transformLon(x, y) {
+    let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+    ret += (20.0 * Math.sin(6.0 * x * pi) + 20.0 * Math.sin(2.0 * x * pi)) * 2.0 / 3.0;
+    ret += (20.0 * Math.sin(x * pi) + 40.0 * Math.sin(x / 3.0 * pi)) * 2.0 / 3.0;
+    ret += (150.0 * Math.sin(x / 12.0 * pi) + 300.0 * Math.sin(x / 30.0 * pi)) * 2.0 / 3.0;
+    return ret;
+  }
+
+  let dLat = transformLat(lon - 105.0, lat - 35.0);
+  let dLon = transformLon(lon - 105.0, lat - 35.0);
+  const radLat = lat / 180.0 * pi;
+  let magic = Math.sin(radLat);
+  magic = 1 - ee * magic * magic;
+  const sqrtMagic = Math.sqrt(magic);
+  dLat = (dLat * 180.0) / ((a * (1 - ee)) / (magic * sqrtMagic) * pi);
+  dLon = (dLon * 180.0) / (a / sqrtMagic * Math.cos(radLat) * pi);
+  return { lat: lat + dLat, lon: lon + dLon };
+}
+
+function gcj02_to_wgs84(lat, lon) {
+  const gcj = wgs84_to_gcj02(lat, lon);
+  return { lat: lat * 2 - gcj.lat, lon: lon * 2 - gcj.lon };
+}
+
+function getSimplifiedCoords(latlngs) {
+  if (!map || !latlngs || latlngs.length < 3) return latlngs;
+  const zoom = map.getZoom();
+  const tol = Math.max(0.0008, 0.004 / Math.pow(1.6, zoom - 10));
+  return simplifyPath(latlngs, tol);
+}
+
+function initMap() {
+  map = L.map('map', { zoomControl: true }).setView([23.05, 113.3], 10);
+
+  document.getElementById('map').classList.add('dark-tiles');
+
+  const gaodeTile = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}', {
+    attribution: '&copy; <a href="https://www.amap.com/">高德地图</a>',
+    maxZoom: 18,
+    subdomains: '1234'
+  });
+
+  const cartoBackup = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+    maxZoom: 19,
+    subdomains: 'abcd'
+  });
+
+  gaodeTile.addTo(map);
+
+  let tileRetries = 0;
+  gaodeTile.on('tileerror', function() {
+    tileRetries++;
+    if (tileRetries >= 3) {
+      try { map.removeLayer(gaodeTile); } catch(e) {}
+      document.getElementById('map').classList.remove('dark-tiles');
+      cartoBackup.addTo(map);
+      console.warn('[Tile] Gaode failed, fallback to CartoDB dark');
+    }
+  });
+
+  map.on('click', onMapClick);
+
+  document.getElementById('info-banner').classList.add('show');
+  setTimeout(() => document.getElementById('info-banner').classList.remove('show'), 8000);
+}
+
+function onMapClick(e) {
+  // Leaflet 在高德瓦片上返回的是 GCJ-02，需要转回 WGS-84 给后端
+  const wgs = gcj02_to_wgs84(e.latlng.lat, e.latlng.lng);
+  const lat = wgs.lat;
+  const lon = wgs.lon;
+  const latStr = lat.toFixed(6);
+  const lonStr = lon.toFixed(6);
+  const isStart = pickMode === 'start';
+  const matched = findNearestNodeJS(lat, lon);
+
+  if (isStart) {
+    document.getElementById('start-lat').value = latStr;
+    document.getElementById('start-lon').value = lonStr;
+    updatePreviewMarker(latStr, lonStr, 'start');
+    if (matched) {
+      startMatchedNode = matched.node;
+      showSnapFeedback('start', lat, lon, matched.node.lat, matched.node.lon, matched.distKm);
+      setPickMode('end');
+    }
+  } else {
+    document.getElementById('end-lat').value = latStr;
+    document.getElementById('end-lon').value = lonStr;
+    updatePreviewMarker(latStr, lonStr, 'end');
+    if (matched) {
+      endMatchedNode = matched.node;
+      showSnapFeedback('end', lat, lon, matched.node.lat, matched.node.lon, matched.distKm);
+      setPickMode('start');
+    }
+  }
+}
+
+function showSnapFeedback(type, clickLat, clickLon, matchLat, matchLon, distKm) {
+  const isStart = type === 'start';
+  const color = isStart ? '#00b894' : '#ff6b6b';
+  const lineRef = isStart ? 'startSnapLine' : 'endSnapLine';
+  const markerRef = isStart ? 'startMatchedMarker' : 'endMatchedMarker';
+
+  if (window[lineRef]) map.removeLayer(window[lineRef]);
+  if (window[markerRef]) map.removeLayer(window[markerRef]);
+
+  const clickGcj = wgs84_to_gcj02(clickLat, clickLon);
+  const matchGcj = wgs84_to_gcj02(matchLat, matchLon);
+
+  window[lineRef] = L.polyline([[clickGcj.lat, clickGcj.lon], [matchGcj.lat, matchGcj.lon]], {
+    color: color, weight: 1.5, opacity: 0.5, dashArray: '6,4'
+  }).addTo(map);
+
+  window[markerRef] = L.circleMarker([matchGcj.lat, matchGcj.lon], {
+    radius: 7, color: color, fillColor: color, fillOpacity: 0.25, weight: 2
+  }).bindPopup('<b>' + (isStart ? '起点' : '终点') + '匹配节点</b><br>节点: ' +
+    (isStart ? startMatchedNode?.node_id : endMatchedNode?.node_id) + '<br>距离: ' + distKm + ' km')
+   .addTo(map).openPopup();
+}
+
+function updatePreviewMarker(lat, lon, type) {
+  const isStart = type === 'start';
+  const color = isStart ? 'var(--accent-start)' : 'var(--accent-end)';
+  const label = isStart ? 'S' : 'E';
+  const shadowColor = isStart ? 'rgba(0,184,148,0.5)' : 'rgba(255,107,107,0.5)';
+  const gcj = wgs84_to_gcj02(parseFloat(lat), parseFloat(lon));
+
+  if (isStart) {
+    if (startPreviewMarker) map.removeLayer(startPreviewMarker);
+    startPreviewMarker = L.marker([gcj.lat, gcj.lon], {
+      icon: L.divIcon({
+        html: '<div style="background:' + color + ';width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 16px ' + shadowColor + ',inset 0 0 6px rgba(255,255,255,0.3);font-size:10px;line-height:18px;text-align:center;color:#fff;font-weight:700;font-family:var(--font-display);">' + label + '</div>',
+        iconSize: [18, 18], iconAnchor: [9, 9]
+      })
+    }).addTo(map).bindPopup('<b>起点</b><br>' + lat + ', ' + lon).openPopup();
+  } else {
+    if (endPreviewMarker) map.removeLayer(endPreviewMarker);
+    endPreviewMarker = L.marker([gcj.lat, gcj.lon], {
+      icon: L.divIcon({
+        html: '<div style="background:' + color + ';width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 16px ' + shadowColor + ',inset 0 0 6px rgba(255,255,255,0.3);font-size:10px;line-height:18px;text-align:center;color:#fff;font-weight:700;font-family:var(--font-display);">' + label + '</div>',
+        iconSize: [18, 18], iconAnchor: [9, 9]
+      })
+    }).addTo(map).bindPopup('<b>终点</b><br>' + lat + ', ' + lon).openPopup();
+  }
+}
+
+function setPickMode(mode) {
+  pickMode = mode;
+  const startBtn = document.getElementById('pick-start-btn');
+  const endBtn = document.getElementById('pick-end-btn');
+  const indicator = document.getElementById('map-indicator');
+  const hint = document.getElementById('pick-hint');
+
+  if (mode === 'start') {
+    startBtn.className = 'pick-btn active-start';
+    endBtn.className = 'pick-btn';
+    indicator.className = 'map-mode-indicator start-mode';
+    indicator.textContent = '🟢 点击地图选择起点';
+    hint.innerHTML = '当前：在地图上点击选择 <b style="color:var(--accent-start);">起点</b>';
+  } else {
+    startBtn.className = 'pick-btn';
+    endBtn.className = 'pick-btn active-end';
+    indicator.className = 'map-mode-indicator end-mode';
+    indicator.textContent = '🔴 点击地图选择终点';
+    hint.innerHTML = '当前：在地图上点击选择 <b style="color:var(--accent-end);">终点</b>';
+  }
+}
+
+function loadShipTypes() {
+  fetch('/api/ship_types')
+    .then(r => r.json())
+    .then(data => {
+      const sel = document.getElementById('ship-type');
+      sel.innerHTML = '';
+      if (data.success && data.data) {
+        data.data.forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t; opt.textContent = t;
+          if (t === '中型货船') opt.selected = true;
+          sel.appendChild(opt);
+        });
+      }
+    })
+    .catch(() => {
+      document.getElementById('ship-type').innerHTML = '<option>中型货船</option><option>大型货船</option><option>小型货船</option>';
+    });
+}
+
+function loadTopoNodes() {
+  fetch('/api/topology_nodes')
+    .then(r => r.json())
+    .then(data => {
+      if (data.success && data.data) {
+        allTopoNodes = data.data;
+        document.getElementById('node-count-badge').textContent = '拓扑节点: ' + allTopoNodes.length + ' 个';
+        renderTopoNodes();
+        document.getElementById('node-count-badge').style.display = 'block';
+      }
+    })
+    .catch(() => {});
+}
+
+function toggleTopoNodes() {
+  const checked = document.getElementById('show-nodes').checked;
+  if (checked) {
+    renderTopoNodes();
+    document.getElementById('node-count-badge').style.display = 'block';
+  } else {
+    if (topoNodesLayer) { map.removeLayer(topoNodesLayer); topoNodesLayer = null; }
+    document.getElementById('node-count-badge').style.display = 'none';
+  }
+}
+
+function renderTopoNodes() {
+  if (!allTopoNodes.length) return;
+  if (topoNodesLayer) map.removeLayer(topoNodesLayer);
+
+  const markers = [];
+  const typeColors = { turn_point: '#ff9f43', merge_point: '#ff6b6b', bifurcation: '#a29bfe', waypoint: '#4a6a8a' };
+
+  allTopoNodes.forEach(n => {
+    const color = typeColors[n.type] || '#4a6a8a';
+    // WGS-84 → GCJ-02 纠偏，对齐高德瓦片
+    const gcj = wgs84_to_gcj02(n.lat, n.lon);
+    const m = L.circleMarker([gcj.lat, gcj.lon], {
+      radius: 2.5, color: color, fillColor: color, fillOpacity: 0.35, weight: 0.5, opacity: 0.5
+    }).bindPopup('<b>节点 ' + n.node_id + '</b><br>类型: ' + n.type + '<br>频次: ' + n.frequency);
+    markers.push(m);
+  });
+
+  topoNodesLayer = L.layerGroup(markers).addTo(map);
+}
+
+function showError(msg) {
+  const toast = document.getElementById('error-toast');
+  toast.textContent = '⚠ ' + msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 4000);
+}
+
+function clearMap() {
+  routeLayers.forEach(l => map.removeLayer(l));
+  routeLayers = [];
+  flowLayers.forEach(l => map.removeLayer(l));
+  flowLayers = [];
+  nodeMarkers.forEach(m => map.removeLayer(m));
+  nodeMarkers = [];
+  if (startSnapLine) { map.removeLayer(startSnapLine); startSnapLine = null; }
+  if (endSnapLine) { map.removeLayer(endSnapLine); endSnapLine = null; }
+  if (startMatchedMarker) { map.removeLayer(startMatchedMarker); startMatchedMarker = null; }
+  if (endMatchedMarker) { map.removeLayer(endMatchedMarker); endMatchedMarker = null; }
+}
+
+function doPlan() {
+  const startLat = document.getElementById('start-lat').value.trim();
+  const startLon = document.getElementById('start-lon').value.trim();
+  const endLat = document.getElementById('end-lat').value.trim();
+  const endLon = document.getElementById('end-lon').value.trim();
+  const shipType = document.getElementById('ship-type').value;
+
+  if (!startLat || !startLon || !endLat || !endLon) {
+    showError('请填写完整的起终点GPS坐标（可在左侧输入或直接在地图上点击选择）');
+    return;
+  }
+
+  const slat = parseFloat(startLat), slon = parseFloat(startLon);
+  const elat = parseFloat(endLat), elon = parseFloat(endLon);
+
+  if (isNaN(slat) || isNaN(slon) || isNaN(elat) || isNaN(elon) ||
+      slat < -90 || slat > 90 || elat < -90 || elat > 90 ||
+      slon < -180 || slon > 180 || elon < -180 || elon > 180) {
+    showError('GPS坐标格式不正确，纬度为-90~90，经度为-180~180');
+    return;
+  }
+
+  const btn = document.getElementById('btn-plan');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>正在规划...';
+
+  clearMap();
+  hideResults();
+
+  fetch('/api/plan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      start_lat: slat, start_lon: slon,
+      end_lat: elat, end_lon: elon,
+      ship_type: shipType
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    btn.innerHTML = '<span class="spinner"></span>开始路径规划';
+
+    if (!data.success) {
+      let msg = data.message || '路径规划失败';
+      if (data.hint) msg += '\n' + data.hint;
+      showError(msg);
+      return;
+    }
+    if (data.data && data.data.warnings && data.data.warnings.length > 0) {
+      showError('⚠ ' + data.data.warnings.join('；'));
+    }
+    renderResults(data.data);
+  })
+  .catch(err => {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    btn.innerHTML = '<span class="spinner"></span>开始路径规划';
+    showError('网络请求失败: ' + err.message);
+  });
+}
+
+function renderResults(data) {
+  allRoutes = data.routes || [];
+  if (allRoutes.length === 0) {
+    showError('未能找到可用路径');
+    return;
+  }
+
+  document.getElementById('legend').classList.add('show');
+
+  const s = data.start, e = data.end;
+
+  if (startPreviewMarker) map.removeLayer(startPreviewMarker);
+  if (endPreviewMarker) map.removeLayer(endPreviewMarker);
+
+  // 起点/终点标记：WGS-84 → GCJ-02 纠偏
+  const s_gcj = wgs84_to_gcj02(s.input_lat, s.input_lon);
+  const e_gcj = wgs84_to_gcj02(e.input_lat, e.input_lon);
+  const s_m_gcj = wgs84_to_gcj02(s.matched_lat, s.matched_lon);
+  const e_m_gcj = wgs84_to_gcj02(e.matched_lat, e.matched_lon);
+
+  startPreviewMarker = L.marker([s_gcj.lat, s_gcj.lon], {
+    icon: L.divIcon({
+      html: '<div style="background:var(--accent-start);width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 16px rgba(0,184,148,0.5),inset 0 0 6px rgba(255,255,255,0.3);font-size:10px;line-height:18px;text-align:center;color:#fff;font-weight:700;font-family:var(--font-display);">S</div>',
+      iconSize: [18, 18], iconAnchor: [9, 9]
+    })
+  }).addTo(map).bindPopup('<b>起点</b><br>输入: ' + s.input_lat.toFixed(4) + ', ' + s.input_lon.toFixed(4) + '<br>匹配节点: ' + s.matched_node + ' (' + s.match_distance_km + 'km)');
+
+  endPreviewMarker = L.marker([e_gcj.lat, e_gcj.lon], {
+    icon: L.divIcon({
+      html: '<div style="background:var(--accent-end);width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 16px rgba(255,107,107,0.5),inset 0 0 6px rgba(255,255,255,0.3);font-size:10px;line-height:18px;text-align:center;color:#fff;font-weight:700;font-family:var(--font-display);">E</div>',
+      iconSize: [18, 18], iconAnchor: [9, 9]
+    })
+  }).addTo(map).bindPopup('<b>终点</b><br>输入: ' + e.input_lat.toFixed(4) + ', ' + e.input_lon.toFixed(4) + '<br>匹配节点: ' + e.matched_node + ' (' + e.match_distance_km + 'km)');
+
+  const bounds = [[s_m_gcj.lat, s_m_gcj.lon], [e_m_gcj.lat, e_m_gcj.lon]];
+
+  allRoutes.forEach((route, i) => {
+    if (route.coordinates.length < 2) return;
+    // 路径坐标 WGS-84 → GCJ-02 纠偏
+    const latlngs = route.coordinates.map(c => {
+      const g = wgs84_to_gcj02(c[1], c[0]);
+      return [g.lat, g.lon];
+    });
+    const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
+
+    const line = L.polyline(latlngs, {
+      color: color, weight: 5, opacity: 0.95, lineCap: 'round', lineJoin: 'round', smoothFactor: 3
+    }).addTo(map);
+    line.bindPopup('<b>' + route.path_name + '</b><br>距离: ' + route.statistics.total_distance_km + ' km<br>时间: ' + route.statistics.total_time_min + ' min');
+    routeLayers.push(line);
+
+    latlngs.forEach(ll => bounds.push(ll));
+  });
+
+  map.fitBounds(bounds, { padding: [60, 60] });
+
+  showRouteCards(allRoutes);
+  selectRoute(0);
+  document.getElementById('results-panel').classList.add('show');
+
+  animateRouteDrawing();
+}
+
+function animateRouteDrawing() {
+  setTimeout(() => {
+    routeLayers.forEach((line, i) => {
+      try {
+        const path = line._path;
+        if (!path) return;
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = length;
+        path.style.strokeDashoffset = length;
+        path.style.transition = 'none';
+        path.getBoundingClientRect();
+        path.style.transition = 'stroke-dashoffset 1.8s cubic-bezier(0.22, 1, 0.36, 1)';
+        path.style.strokeDashoffset = '0';
+
+        const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
+        const glowPath = path.cloneNode();
+        glowPath.style.stroke = color;
+        glowPath.style.strokeWidth = '9';
+        glowPath.style.strokeLinecap = 'round';
+        glowPath.style.strokeLinejoin = 'round';
+        glowPath.style.opacity = '0.2';
+        glowPath.style.strokeDasharray = length;
+        glowPath.style.strokeDashoffset = length;
+        glowPath.style.transition = 'stroke-dashoffset 1.8s cubic-bezier(0.22, 1, 0.36, 1)';
+        glowPath.style.filter = 'blur(4px)';
+        path.parentNode.insertBefore(glowPath, path);
+        glowPath.getBoundingClientRect();
+        glowPath.style.strokeDashoffset = '0';
+
+        setTimeout(() => {
+          const flowPath = path.cloneNode();
+          flowPath.style.stroke = 'transparent';
+          flowPath.style.strokeWidth = '5';
+          flowPath.style.strokeLinecap = 'round';
+          flowPath.style.strokeLinejoin = 'round';
+          flowPath.style.strokeDasharray = '8 20';
+          flowPath.style.strokeDashoffset = '0';
+          flowPath.style.opacity = '0.7';
+          const flowDef = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+          flowDef.id = 'flowGrad' + i;
+          flowDef.innerHTML = '<stop offset="0%" stop-color="' + color + '" stop-opacity="0"/><stop offset="50%" stop-color="' + color + '" stop-opacity="1"/><stop offset="100%" stop-color="' + color + '" stop-opacity="0"/>';
+          const defs = path.ownerSVGElement.querySelector('defs') || (function() {
+            const d = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            path.ownerSVGElement.insertBefore(d, path.ownerSVGElement.firstChild);
+            return d;
+          })();
+          defs.appendChild(flowDef);
+          flowPath.style.stroke = 'url(#flowGrad' + i + ')';
+          flowPath.style.animation = 'routeFlowDash 1.2s linear infinite';
+          path.parentNode.insertBefore(flowPath, path.nextSibling);
+        }, 2000);
+      } catch(e) {}
+    });
+  }, 300);
+}
+
+function showRouteCards(routes) {
+  const container = document.getElementById('route-cards');
+  container.innerHTML = routes.map((r, i) => {
+    const s = r.statistics;
+    return '<div class="route-card" id="route-card-' + i + '" onclick="selectRoute(' + i + ')">' +
+      '<div class="route-name"><span class="color-dot" style="background:' + ROUTE_COLORS[i % ROUTE_COLORS.length] + ';box-shadow:0 0 8px ' + ROUTE_COLORS[i % ROUTE_COLORS.length] + ';"></span>' + r.path_name + '</div>' +
+      '<div class="stat-row"><span>总距离</span><span class="stat-val">' + s.total_distance_km + ' km</span></div>' +
+      '<div class="stat-row"><span>总时间</span><span class="stat-val">' + s.total_time_min + ' min</span></div>' +
+      '<div class="stat-row"><span>平均航速</span><span class="stat-val">' + s.avg_speed_knots + ' 节</span></div>' +
+      '<div class="stat-row"><span>安全评分</span><span class="stat-val" style="color:var(--accent-start);">' + s.safety_score + '</span></div>' +
+    '</div>';
+  }).join('');
+}
+
+function selectRoute(i) {
+  activeRoute = i;
+  document.querySelectorAll('.route-card').forEach(c => c.classList.remove('active'));
+  const card = document.getElementById('route-card-' + i);
+  if (card) card.classList.add('active');
+
+  routeLayers.forEach((l, idx) => {
+    const isTarget = idx === i;
+    l.setStyle({ weight: isTarget ? 6 : 3, opacity: isTarget ? 1 : 0.35, dashArray: !isTarget ? '8 8' : null });
+  });
+
+  const route = allRoutes[i];
+  document.getElementById('node-chips').innerHTML = (route.waypoints || []).map(w =>
+    '<span class="node-chip">节点' + w.node_id + '</span>'
+  ).join('');
+  document.getElementById('node-list').classList.add('show');
+}
+
+function hideResults() {
+  document.getElementById('results-panel').classList.remove('show');
+  document.getElementById('legend').classList.remove('show');
+  document.getElementById('node-list').classList.remove('show');
+  allRoutes = [];
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  initMap();
+  loadShipTypes();
+  loadTopoNodes();
+});
+
+// ===== 轨迹回放 =====
+let replayLayers = [];
+let replayTimer = null;
+
+async function startReplay() {
+  clearMap();
+  hideResults();
+
+  const b = map.getBounds();
+  const bboxParams = `?min_lat=${b.getSouth()}&max_lat=${b.getNorth()}&min_lon=${b.getWest()}&max_lon=${b.getEast()}`;
+
+  const resp = await fetch('/api/trajectory_sample' + bboxParams);
+  const data = await resp.json();
+  if (!data.success) { alert(data.error || '轨迹数据加载失败'); return; }
+
+  document.getElementById('btn-replay').style.display = 'none';
+  document.getElementById('btn-stop-replay').style.display = '';
+
+  if (replayTimer) { clearTimeout(replayTimer); replayTimer = null; }
+  replayLayers.forEach(m => map.removeLayer(m));
+  replayLayers = [];
+
+  let trajectories = data.trajectories.filter(t => t.points.length >= 30);
+  if (trajectories.length === 0) {
+    const resp2 = await fetch('/api/trajectory_sample');
+    const data2 = await resp2.json();
+    if (!data2.success) { alert('无轨迹数据'); return; }
+    trajectories = data2.trajectories.filter(t => t.points.length >= 30);
+  }
+  trajectories = trajectories.slice(0, 8);
+
+  const colors = ['#00b894','#4fc3f7','#ff9f43','#e84393','#6c5ce7','#fdcb6e','#00cec9','#ff7675'];
+
+  const replayLines = [];
+  trajectories.forEach((t, i) => {
+    const color = colors[i % colors.length];
+    const line = L.polyline([], {color: color, weight: 3, opacity: 0.5}).addTo(map);
+    const head = L.circleMarker(t.points[0], {radius: 7, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1}).addTo(map);
+    replayLines.push({line, head, color, points: t.points, idx: 0});
+    replayLayers.push(line, head);
+  });
+
+  if (replayLines.length === 0) {
+    alert('没有足够的轨迹数据');
+    stopReplay();
+    return;
+  }
+
+  const speed = parseInt(document.getElementById('replay-speed').value);
+  const STEP = 3;
+
+  function animate() {
+    let allDone = true;
+    replayLines.forEach(rl => {
+      if (rl.idx < rl.points.length) {
+        allDone = false;
+        const next = Math.min(rl.idx + STEP, rl.points.length);
+        for (let k = rl.idx; k < next; k++) {
+          const pt = rl.points[k];
+          rl.line.addLatLng([pt[0], pt[1]]);
+        }
+        rl.idx = next;
+        const headPt = rl.points[Math.min(next - 1, rl.points.length - 1)];
+        rl.head.setLatLng([headPt[0], headPt[1]]);
+      }
+    });
+    if (!allDone) {
+      replayTimer = setTimeout(animate, Math.max(15, 120 - speed * 2));
+    } else {
+      setTimeout(stopReplay, 800);
+    }
+  }
+  animate();
+}
+
+function stopReplay() {
+  if (replayTimer) { clearTimeout(replayTimer); replayTimer = null; }
+  replayLayers.forEach(m => map.removeLayer(m));
+  replayLayers = [];
+  document.getElementById('btn-replay').style.display = '';
+  document.getElementById('btn-stop-replay').style.display = 'none';
+}
+</script>
+</body>
+</html>

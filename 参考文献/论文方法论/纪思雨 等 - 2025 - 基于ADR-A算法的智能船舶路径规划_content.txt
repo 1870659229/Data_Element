@@ -1,0 +1,1354 @@
+=== Page 1 ===
+中国舰船研究 
+Chinese Journal of Ship Research 
+ISSN 1673-3185,CN 42-1755/TJ 
+ 
+ 
+ 
+ 
+《中国舰船研究》网络首发论文 
+ 
+题目： 
+基于ADR-A*算法的智能船舶路径规划 
+作者： 
+纪思雨，吕红光，张伦平，赵延杰，邢辉，尹勇 
+DOI： 
+10.19693/j.issn.1673-3185.04332 
+收稿日期： 
+2024-12-25 
+网络首发日期： 
+2025-12-10 
+引用格式： 
+纪思雨，吕红光，张伦平，赵延杰，邢辉，尹勇．基于ADR-A*算法的智能船
+舶路径规划[J/OL]．中国舰船研究. 
+https://doi.org/10.19693/j.issn.1673-3185.04332 
+ 
+ 
+ 
+ 
+ 
+ 
+网络首发：在编辑部工作流程中，稿件从录用到出版要经历录用定稿、排版定稿、整期汇编定稿等阶
+段。录用定稿指内容已经确定，且通过同行评议、主编终审同意刊用的稿件。排版定稿指录用定稿按照期
+刊特定版式（包括网络呈现版式）排版后的稿件，可暂不确定出版年、卷、期和页码。整期汇编定稿指出
+版年、卷、期、页码均已确定的印刷或数字出版的整期汇编稿件。录用定稿网络首发稿件内容必须符合《出
+版管理条例》和《期刊出版管理规定》的有关规定；学术研究成果具有创新性、科学性和先进性，符合编
+辑部对刊文的录用要求，不存在学术不端行为及其他侵权行为；稿件内容应基本符合国家有关书刊编辑、
+出版的技术标准，正确使用和统一规范语言文字、符号、数字、外文字母、法定计量单位及地图标注等。
+为确保录用定稿网络首发的严肃性，录用定稿一经发布，不得修改论文题目、作者、机构名称和学术内容，
+只可基于编辑规范进行少量文字的修改。 
+出版确认：纸质期刊编辑部通过与《中国学术期刊（光盘版）》电子杂志社有限公司签约，在《中国
+学术期刊（网络版）》出版传播平台上创办与纸质期刊内容一致的网络版，以单篇或整期出版形式，在印刷
+出版之前刊发论文的录用定稿、排版定稿、整期汇编定稿。因为《中国学术期刊（网络版）》是国家新闻出
+版广电总局批准的网络连续型出版物（ISSN 2096-4188，CN 11-6037/Z），所以签约期刊的网络版上网络首
+发论文视为正式出版。 
+ 
+
+
+=== Page 2 ===
+期刊网址：www.ship-research.com
+引用格式：纪思雨, 吕红光, 张伦平, 等. 基于ADR-A*算法的智能船舶路径规划[J]. 中国舰船研究. DOI: 10.19693/j.issn.
+1673-3185.04332.
+JI S Y, LÜ H G, ZHANG L P, et al. Intelligent ship path planning based on ADR-A* algorithm[J]. Chinese Journal of
+Ship Research (in Chinese). DOI: 10.19693/j.issn.1673-3185.04332.
+ 
+基于ADR-A*算法的智能船舶路径规划
+扫码阅读全文
+纪思雨
+1，吕红光
+*1，张伦平
+2，赵延杰
+2，邢辉
+3，尹勇
+1
+1 大连海事大学 航海学院，辽宁 大连 116026
+2 中国船舶科学研究中心，江苏 无锡 214028
+3 大连海事大学 轮机工程学院，辽宁 大连 116026
+摘    要:［目的］为了提升复杂航行环境下智能船舶的自主路径规划能力，提出一种自适应方向限制A*算
+法。［方法］首先，对海图环境进行预处理，提取障碍物边界并进行双层膨化，使船舶与障碍物保持安全距
+离。然后，改进A*算法的节点搜索策略，使其在路径规划过程中可根据终点自适应地调整搜索节点的方向与
+数量，提高算法的运行效率。最后，优化路径的安全检测方式，提取关键路径点，提高路径的安全性与平滑
+性。［结果］实验数据显示，相比于A*算法、Bi-A*算法、ERA*算法和RRT*算法，ADR-A*算法路径长度减少
+3.56%，运行时间优化60.13%，转向点数减少76.71%。［结论］算法可以在复杂环境下规划出兼具安全性、经
+济性与平滑性的可航路径，验证了ADR-A*算法的自主路径规划能力，为智能船舶自主航线设计提供优化的
+解决方案与安全保障。
+关键词：路径规划；运动规划；A*算法；智能船舶
+中图分类号: U664.82
+文献标志码: A
+DOI：10.19693/j.issn.1673-3185.04332 
+ 
+0    引　言
+随着全球贸易的持续增长、科技的迅猛进步
+以及对环境保护意识的不断提升，智能船舶作为
+航运业数字化转型的重要载体，正逐渐进入工程
+应用阶段。路径规划
+[1,2] 作为其核心要素之一，旨
+在通过先进的算法与技术手段，为船舶在复杂的
+海洋环境中规划出安全、高效且经济的航行路
+径。众多学者使用智能路径规划算法
+[3,4] 生成优
+化航线，常见的路径规划方法有智能算法、随机
+采样算法、图形搜索算法和局部优化算法等。
+A*算法（adaptive direction restriction-A*, ADR-
+A*）
+[5] 作为一种经典的图形搜索算法，因其计算原
+理简单，使用方便等优点得到广泛应用。但在大
+规模的复杂环境中进行路径规划时，A*算法存在
+往返搜索、内存开销大、搜索效率差以及搜索节
+点冗余等问题。为解决上述问题，Ammar
+[6] 创新
+性地提出了增强型松弛A*算法（enhanced relaxed
+A*, ERA*），提出了查找矩阵的新颖计算策略。
+仿真实验证明，ERA*算法显著减少了冗余计算，节
+省了大量时间和内存。Li 等
+[7] 在A*算法中引入双
+向交替搜索策略，同时采用滤波函数和贝塞尔曲线
+减小转弯角度和路径长度，提高了搜索效率和路径
+平滑度。王敏等
+[8] 通过同步双向搜索策略和动态权
+重调整方法，减少了路径冗余点和算法计算时间。
+胡明哲等
+[9] 对启发函数的权重值进行调整，将启
+发函数作为底数进行指数运算，缩短了算法搜索
+时间，并通过仿真实验验证了该方法的有效性。
+为进一步提高算法的运行效率，减少冗余节
+点数量，部分学者对A*算法的节点搜索方式进行
+优化。姚得鑫等
+[10] 提出了一种24 邻域搜索策略
+与角度搜索法相结合的新策略，减少了路径搜索
+过程中的非必要节点，提高了搜索节点的质量，
+使搜索过程更具有目标导向性。Wang 等
+[11] 将
+收稿日期: 2024–12–25        修回日期: 2025–02–05
+基金项目: 国家自然科学基金面上项目(52071049）; 辽宁省“揭榜挂帅”科技计划(重点）项目（2022JH1/10800096）; 中央
+高校基本科研业务费专项资金资助项目（3132023627）
+作者简介: 纪思雨，女，2001 年生，博士。研究方向：海上智能交通系统。E-mail：17866513944@163.com
+吕红光，男，1981 年生，博士，教授，博士生导师。研究方向：海上智能交通系统，船舶自动避碰。E-mail：
+lhg@dlmu.edu.cn
+*通信作者: 吕红光
+ 
+中    国    舰    船    研    究
+Chinese Journal of Ship Research
+网络首发时间：2025-12-10 13:09:30       网络首发地址：https://link.cnki.net/urlid/42.1755.TJ.20251209.1254.001
+
+
+=== Page 3 ===
+A*算法的8 邻域搜索优化为5 邻域搜索，同时改
+进算法的评价函数，有效提高了算法的搜索速
+度。He 等
+[12] 定义相邻节点裁剪规则，优化A*算
+法的节点扩展模式，并基于Bresenham 算法提取
+关键路径节点，显著减少了路径转折点的数量。
+Xu 等
+[13] 创新性地提出了双向矩形拓展法，区别于
+传统的8 邻域和24 邻域搜索策略，该方法以矩形
+形式拓展子节点，单次搜索距离更远，拓展次数
+更少，最终规划路径无冗余节点。
+以上路径规划方法均有效提高了路径规划的
+效率，但存在仿真环境简单、路径与障碍物距离
+较近的问题。为解决上述问题，钟佩思等
+[14] 通过
+改进Hybrid A*算法中的启发式函数，减少了节点
+搜索数量；通过构建安全走廊，增加了路径与障
+碍物的距离。Lü等
+[15] 将传统A*算法的8 邻域搜
+索策略改进为动态14 邻域搜索策略，有效地减少
+了路径上的拐点数量。同时，根据实际环境定义
+相关阈值，以此保证路径规划的可达性，提高了
+路径的可用性和安全性。Song 等
+[16] 提出碰撞风
+险函数，以增强A*算法的启发式功能。经优化
+的A*算法可根据路径长度和碰撞风险规划最优
+路径，有效提高了规划路径的整体质量，但算法
+整体运行时间较长。
+通过以上的文献综述发现，目前的研究主要
+针对A*算法的单一不足进行优化，缺少可规划出
+兼顾安全性、经济性、高效性与平滑性的综合型
+可航路径的算法，且仿真实验环境较为简单，无
+法充分体现算法在复杂环境中的路径规划能力。
+在智能船舶产业化过程中迫切需要一种在复杂的
+海图环境中生成综合型可航路径的方法。基于
+此，本文将提出一种ADR-A*算法，以实现并优化
+智能船舶离线路径规划功能。首先，提出自定义
+双层边界膨化策略，对海图环境进行预处理，在
+保留岛礁环境特征的同时，提高路径的安全性。
+其次，对A*算法的节点搜索方式进行优化，创新
+性地提出自适应方向限制优先节点搜索策略，使
+算法可以在寻路过程中自适应地调整搜索节点的
+位置与数量，提高算法的搜索效率。最后，基于
+路径全覆盖策略剔除冗余节点，显著提高路径的
+经济性与平滑性。本文旨在通过以上3 种策略优
+化A*算法，为智能船舶在复杂海洋环境中的路径
+规划提供新的解决方案。
+ 
+1    路径规划算法
+ 
+1.1    传统A*算法
+A*算法是一种经典的启发式搜索算法，常用
+于静态路网中求解最短路径问题。A*算法的评
+价函数为
+F(n) = G(n)+ H(n)
+(1)
+G(n)
+H(n)
+F(n)
+式中：
+为从起点到当前节点的实际代价；
+为从当前节点到终点的预估代价，本文基于
+欧几里得距离计算；
+为从起点到终点的预估
+总代价。
+A*算法在运算过程中需建立open-list 和
+close-list 两个列表。其中open-list 用于储存待检
+测的节点，close-list 用于储存已检测的节点。算
+法首先从open-list 中选取具有最小评价函数值的
+节点作为当前节点，并将其移入close-list；然后，
+算法搜索相邻节点，将其中非障碍物且未被收录
+于close-list 的子节点加入open-list，并计算其相应
+的评价函数值。该过程通过迭代更新open-list 中
+的节点信息，并依据评价函数值重新选择当前节
+点进行搜索，直至搜索到终点为止。
+ 
+1.2    自定义双层边界膨化策略
+为精准表述船舶路径规划过程，对其进行二
+维地图环境建模。本文使用经二值化处理的图像
+作为海图环境，并基于像素点规划路径。原海图
+如图1（a）所示，图像处理结果如图1（b）所示，其
+中黑色区域为不可行区域，白色区域为可行区域。
+ 
+ 
+(a) 海图图像
+(b) 二值化图像
+图 1　海图环境
+Fig. 1    Chart environment
+ 
+传统A*算法所规划路径与障碍物距离较近，
+为提高路径安全性，需使路径点远离障碍物，使
+用膨化方法可解决上述问题，但路径仍存在转向
+节点较多的不足，不满足平滑性与经济性，需进
+行优化处理。由于路径点紧挨障碍物，优化时路
+径穿越障碍物的概率较大，优化效果不佳。针对
+以上问题，本文提出一种自定义双层边界膨化
+策略（customizable double-layer boundary expansion
+strategy, CDBES）。CDBES 的计算原理为将海图
+二值化，提取障碍物边界，基于边界进行膨化，每
+一层膨化大小均可根据需求自定义调整，具体的
+大小设定与海图环境以及像素点对应的实际距离
+中    国    舰    船    研    究
+
+
+=== Page 4 ===
+500×500
+有关。若设置较小的膨化值会导致船舶与障碍物
+距离过近，而设置较大的膨化值可能会导致狭窄
+航道不可航。在进行路径规划时可结合船舶尺
+寸、像素点对应的实际距离、可视化的双层膨化
+图像等灵活设置。本文将第一层与第二层膨化大
+小分别定义为n 与m，单位为像素。鉴于实验所
+用海图环境的分辨率为
+，代表范围为220
+n mile，经换算可知每个像素点代表的实际长度
+为814.88 m。因此，本文将n 设定为2，m 设定为
+4，即路径点与障碍物的最近距离为1.76 n mile，
+路径与障碍物的最近距离大于0.88 n mile，从而
+保证路径的安全性。当n 为2，m 为4 时，双层膨
+化的具体情况如图2 所示。
+ 
+ 
+警戒区
+警戒区
+缓冲区
+障碍物边界
+障碍物边界
+岛礁区
+岛礁区
+缓冲区
+图 2　图像双层膨化结果
+Fig. 2    The result of double-layer expansion of image
+ 
+图2 中，白色区域为可航水域，黄色区域为岛
+礁区，黑色区域为障碍物边界。棕色区域为一层
+膨化范围，本文将其定义为警戒区，最终路径需
+在警戒区外以保证路径的安全性。蓝色区域为二
+层膨化与一层膨化之间的范围，本文将其定义为
+缓冲区，缓冲区可为剔除冗余节点提供求解空
+间，最终路径可穿越该区域。
+自定义双层边界膨化策略最终生成两张海
+图，如图3（a）和图3（b）所示。使用CDBES 的具
+体方式为：首先，基于第2 层膨化海图进行路径规
+划，在缓冲区外生成初始路径。其次，基于第1 层
+膨化海图剔除冗余节点，此时路径点与警戒区相
+隔一个缓冲区，求解可行路径的空间更大，可充
+分优化路径。最终，生成一条转向点少且不穿越
+警戒区的路径，提高了路径的平滑性与安全性。
+ 
+1.3    自适应方向限制优先节点搜索策略
+ 
+1.3.1    有方向限制的节点搜索策略
+传统A*算法的子节点搜索策略如图4（a）所
+示。为提高算法的寻路能力，使用24 邻域搜索策
+略进行路径规划，具体搜索方式如图4（b）所示。
+使用24 邻域搜索策略虽然可以提高步长，但
+是节点数量的增多会降低算法的搜索效率，为解
+决上述问题，部分学者提出了有方向限制的节点
+搜索策略。方向限制是指，根据当前节点与终点
+的位置关系，对节点下一步移动方向所施加的约
+束条件，即剔除与终点方向相关性较低的相邻节
+点，使搜索过程更具有目标导向性。两种不同的
+搜索策略如图5 所示。图5（a）为文献
+[17] 提出的方
+法，该文根据起点与终点的位置关系对A*算法的
+搜索方向进行约束。当终点位于右下方时，将搜
+索方向限定在下、右和右下方，即图5（a）所示的
+8 邻域。图5（b）为文献
+[18] 使用的方法，该文在根
+据起点与终点的位置关系对搜索方向进行约束的
+同时减少了邻域的数量。当终点位于右下方时，
+不搜索左、上和左上方，只搜索图5（b）所示的5
+邻域。图5 中红色五角星为当前节点，终点位于当
+前节点的右下方，绿色方格为需遍历的子节点。
+ 
+1.3.2    自适应方向限制与优先节点
+传统A*算法每次需拓展8 个节点。在如图5
+（b）所示的有方向限制的搜索策略中，终点位于
+当前节点的右下方，通过剔除左上角的3 个节点，
+减少需遍历的子节点数量，可以有效地提高算法
+的运行效率。但传统的方向限制存在一定的局限
+ 
+(a) 第一层膨化海图
+(b) 第二层膨化海图
+岛礁区
+一层膨化区域
+障碍物边界
+岛礁区
+二层膨化区域
+障碍物边界
+图 3　CDBES 生成的两张海图
+Fig. 3    CDBES generated two charts
+ 
+1
+9
+10
+14
+1
+2
+3
+15
+18
+6
+7
+8
+19
+20
+21
+22
+23
+24
+16
+4
+5
+17
+11
+12
+13
+2
+3
+5
+8
+7
+6
+4
+(a) 8 邻域搜索策略
+(b) 24 邻域搜索策略
+图 4　A*算法节点搜索策略
+Fig. 4    A* algorithm node search strategy
+纪思雨等：基于ADR-A*算法的智能船舶路径规划
+
+
+=== Page 5 ===
+性，例如路径转向角度大、冗余节点多等，为解决
+节点搜索策略中存在的问题，本文将24 邻域搜索
+策略与方向限制策略相结合，提出一种全新的自适
+应方向限制优先节点搜索策略（adaptive direction
+restriction  priority-node  search  strategy,  ADRPSS）。
+本文主要从优先节点、有方向限制的优先节点、
+可达的优先节点三部分对ADRPSS 的具体内容
+进行描述。
+1）优先节点。根据子节点与当前节点的位置
+关系，将子节点分为优先节点与次优节点，如图6
+所示。图6 中，红色五角星为当前节点，绿色十字
+纹部分是8 邻域内节点，定义为次优节点；蓝色斜
+纹部分是24 邻域内8 邻域外节点，定义为优先
+节点。
+ 
+ 
+(a) 全部节点
+(b) 方向限制搜索策略
+(c) 终点位于右方
+(d) 终点位于右下方
+图 6　优先节点与次优节点
+Fig. 6    Priority and second-priority nodes
+ 
+2）有方向限制的优先节点。图6（b）为文献
+[17]
+使用的有方向限制的节点搜索策略，由于该方法
+存在搜索不到可航路径的问题，对其进行优化，
+优化后的节点搜索策略如图6（c）和图6（d）所示。
+图6（c）和（d）分别展示了终点位于当前节点
+的右方和右下方时，两种节点的分布方式。算法
+在路径规划过程中，只搜索蓝色斜纹部分的优先
+节点。
+3）可达的优先节点。根据路径的连续性可
+知，优先节点需要由当前节点经过次优节点到
+达，所以，优先节点的可达性受次优节点性质的
+影响。图7（a）和图7（b）分别显示了当节点的直
+线方向和对角线方向的次优节点为障碍物时，优
+先节点的不可达情况。
+ 
+ 
+(a) 直线方向
+(b) 对角线方向
+图 7　优先节点不可达情况
+Fig. 7    The priority node is unreachable
+ 
+可达的优先节点的计算流程如图8 所示。
+ 
+ 
+开始
+当前节点与
+终点坐标
+判断所属情况
+优先节点
+与次优借点
+路径规划完成
+不可达节点列表
+可达节点列表
+结束
+是
+次优节点
+终点?
+障碍物?
+遍历完成?
+否
+否
+否
+是
+是
+图 8　可达的优先节点计算流程图
+Fig. 8    Reachable priority points calculation flow chart
+ 
+可达的优先节点的搜索过程为：首先根据终
+点与当前节点的位置关系，得到对应的优先节点
+与次优节点信息。然后依次判断次优节点是否为
+终点，是否为障碍物，是否遍历完成，最后得到可
+达的优先节点列表。在路径规划过程中，优先节
+点的具体情况如图9 所示。
+图9 中绿色三角形表示当前节点，蓝色正方
+形表示终点，黑色方块表示障碍物，绿色“+”符号
+表示次优节点，蓝色菱形表示优先节点，其中 “×”
+ 
+(a) 文献[17]搜索策略
+(b) 文献[18]搜索策略
+图 5　有方向限制的节点搜索策略
+Fig. 5    Direction-limited node search strategy
+中    国    舰    船    研    究
+
+
+=== Page 6 ===
+符号表示不可达的优先节点，“|”符号表示可达的
+优先节点。
+ 
+1.4    基于路径全覆盖策略提取关键路径点
+A*算法规划的路径存在大量的冗余节点，为
+解决上述问题，本文提出一种路径全覆盖策略
+（path full coverage strategy, PFCS）进行碰撞检测，
+并基于PFCS 提取路径中的关键节点，剔除非必
+要的路径点与拐点，提高路径的平滑度。PFCS 中
+需检测的像素点计算流程如图10 所示。
+ 
+ 
+开始
+输入起点 (Xs, Ys)
+终点 (Xe, Ye)
+建立列表 L 存放覆盖像素点位置
+Xmin: 横坐标最小值, Xmax: 横坐标最大值, Dx: 横坐标差值绝对值
+Dx = 0?
+Y = Ymin
+Y = Ymin
+X = (Y−b)/k
+Y = k*X+b
+X = Xmin
+Dx>Dy?
+Ymin: 横坐标最小值, Ymax: 横坐标最大值, Dy: 横坐标差值绝对值
+根据斜截式计算斜率 k 和截距 b
+路径无斜率, 根据 Y
+值由小至大遍历线段
+路径点为整数, 无
+需取整, X 分别向
+左右拓展 1 个像
+素点
+根据直线方程计算得
+到的 X 值需取整, 取
+整后 X 分别向左右拓
+展 1 个像素点
+根据直线方程计算得
+到的 Y 值需取整, 取
+整后 Y 分别向上下拓
+展 1 个像素点
+L 中添加点
+(Xs, Y),
+(Xs−1,Y), 
+(Xs+1, Y)
+L 中添加点
+(round(X), Y),
+(round(X)−1, Y), 
+(round(X)+1, Y)
+L 中添加点
+(X, round(Y)),
+(X, round(Y)−1), 
+(X, round(Y)+1)
+Y = Y+1, 
+Y>Ymax?
+Y = Y+1, 
+Y>Ymax?
+X = X+1, 
+X>Xmax?
+路径纵坐标差值较大, 以纵
+坐标 Y 为基础遍历线段
+路径横坐标差值较大, 以横
+坐标 X 为基础遍历线段
+是
+是
+是
+是
+否
+否
+否
+否
+否
+是
+得到列表 L
+结束
+图 10　PFCS 需检测像素点计算流程图
+Fig. 10    PFCS detect pixel points calculation flow chart
+ 
+当前节点
+终点
+次优节点
+优先节点
+可达优先节点
+不可达优先节点
+当前节点
+终点
+次优节点
+优先节点
+可达优先节点
+不可达优先节点
+(a) 终点位于左下方
+(b) 终点位于下方
+图 9　可达与不可达的优先节点
+Fig. 9    Reachable and unreachable priority nodes
+纪思雨等：基于ADR-A*算法的智能船舶路径规划
+
+
+=== Page 7 ===
+图10 中L 为储存全部像素点位置的列表，
+X、Y 分别为变化的横纵坐标值，round(X) 为X 的
+四舍五入取整值。PFCS 中需检测像素点的计算
+流程为：首先根据输入的起点终点计算相关信
+息。其次判断横坐标差值是否为零，若为零则直
+线无斜率，从上至下依次添加需检测的像素点。
+反之直线存在斜率，需进一步判断直线状态。然
+后，判断横、纵坐标差值绝对值的大小，若横大于
+纵，则纵向跨度小，需从左至右依次添加需检测
+的像素点，反之则横向跨度小，需从上至下依次
+添加需检测的像素点。最后，得到全部需检测的
+像素点坐标。
+PFCS 具体如图11 所示。图11 中绿色三角
+与蓝色方块分别表示线段的起点和终点，黑色圆
+点表示坐标点，灰色填充的区域表示需检测的像
+素点位置。
+ 
+ 
+起点
+终点
+路径点
+图 11　PFCS 示意图
+Fig. 11    PFCS schematic diagram
+ 
+提取关键路径点的具体方法为：首先根据
+A*算法规划的最优路径，提取全部路径点数据；
+其次对路径点数据进行计算分析，得到转向点数
+据；最后根据转向点和海图环境信息，基于
+PFCS 策略进行碰撞检测，剔除冗余转向点，经筛
+选后保留的转向点即为关键路径点。提取关键路
+径点的流程如图12 所示。
+图12 中h 表示转向点的数量，单位为个；i 表
+示第i 个转向点。提取关键路径点的流程为：连
+接点i 与点i+2，判断两点间的相关点，即使用
+PFCS 得到的需检测像素点，是否为障碍物，若相
+关点之间存在障碍物，则点i+1 为关键路径点。
+关键路径点的提取示意如图13 所示。图13
+中，绿色三角s 与蓝色方块e 分别表示起点和终
+点，黑色圆点p1，p2 和p3 表示转向点。
+具体优化过程为：连接起点s 和转向点p2，线
+段不穿越障碍物，剔除两点间的转向点p1；连接起
+点s 和转向点p3，线段穿越障碍物，则p2 为关键路
+径点。提取关键路径点后，以该关键路径点为新
+的起点，继续优化路径；连接转向点p2 和终点e，
+剔除两点间的转向点p3；此时检测到终点，路径优
+化完毕。优化后的路径为s→p2→e。关键路径点
+为p2。
+ 
+1.5    ADR-A*算法
+ADR-A*算法的流程如图14 所示。
+ADR-A*算法使用自定义双层边界膨化策略
+（CDBES）、自适应方向限制优先节点搜索策略
+（ADRPSS）、路径全覆盖策略（PFCS）对基础A*算
+法进行优化，最终得到一条转向点数少，与障碍
+物保持安全距离的最优路径。
+ 
+2    仿真实验
+为验证ADR-A*算法的安全性与可行性，使
+ 
+开始
+结束
+关键路径点
+h 个转向点
+转向点 i, i = 0
+删除点 i+1
+点 i+1 为关键路径点
+点 i 与 i+2
+相关点均不为
+障碍物
+否
+是
+是
+否
+h = h−1
+h−i = 2?
+i = i+1
+图 12　提取关键路径点流程图
+Fig. 12    Critical path points extraction flow chart
+ 
+起点
+终点
+转向点
+p3
+p2
+p1
+s
+e
+图 13　关键路径点提取示意图
+Fig. 13    Critical path point extraction diagram
+中    国    舰    船    研    究
+
+
+=== Page 8 ===
+用QT 平台，在2.5GHz 处理器、16GB 内存的
+Windows11 计算机上进行仿真实验，实验结果使
+用Python 平台绘制。海图环境的分辨率为
+500×500，代表范围为220 n mile，即每个像素点的
+代表长度为814.88 m。
+ 
+2.1    与传统路径规划算法的对比实验
+为检验本文所提出算法的路径规划能力，将
+ADR-A*算法与传统和改进路径规划算法进行对
+比实验，主要包括A*算法、双向A*算法（Bidirec-
+tional A*, Bi-A*）、ERA*算法
+[6]、快速扩展随机树
+法（Rapidly-exploring  Random  Trees  Star,  RRT*）。
+实验所使用参数如表1 所示。
+ 
+ 
+表 1    算法参数设置
+Table 1    Algorithm parameters setting
+参数名称
+数值
+步长S
+50
+迭代次数K
+300
+第一层膨化大小n
+2
+第二层膨化大小m
+4
+ 
+表1 中步长S 与迭代次数K 为RRT*算法参
+数，第1 层与第2 层膨化大小n，m 为ADR-A*算
+法参数。S，n，m 单位为像素，K 单位为次。
+本文在两种不同的海图环境中分别进行
+20 次实验，海图一的起点为（32, 7），终点为（239,
+469）；海图二的起点为（60,  10），终点为（422,
+482）。海图一和海图二的仿真结果及优化效果如
+图15 所示，路径的详细数据如表2 所示，为了更
+直观地体现路径长度的变化，表2 中使用像素作
+为路径长度的单位。A*算法计算得到一条长度
+最短的最优路径，当环境与起点终点均不变时，
+路径规划结果相同，因此表2 中A*，Bi-A*，ERA*
+和ADR-A*的转向点数与路径长度均无最大值与
+最小值。
+通过分析表2 的实验数据可知，在海图一中，
+ADR-A*算法相比于其他四种算法展现出卓越的
+优化性能。转向点数最少优化了76.71%，路径长
+度最少优化了3.56%，运行时间最少优化了
+60.13%。在海图二中，ADR-A*算法相比于其他四
+种算法，转向点数最少优化了53.85%，路径长度
+最少优化了3.36%，运行时间最少优化了11.16%。
+结合实验数据可知，ERA*算法在运行时间上显著
+优于其他三种传统算法，但对路径长度与转向角
+度的优化不足。本文ADR-A*算法综合考虑了以
+上3 种因素对路径的影响，全面提升了算法效率
+与路径质量。
+通过观察图15 的实验结果与优化效果可以
+发现，ADR-A*算法对路径长度的优化较少，引发
+这一结果的主要原因是算法对安全距离的设定。
+算法规划的初始路径点与障碍物相距较远，在保
+证安全性的同时也增加了路径长度。结合图15（a）
+和图15（b）可以看出，ADR-A*算法所规划路径不
+穿越狭窄的岛礁区域，转向次数少且与障碍物保
+持安全距离。以上特性可避免船舶频繁转向、加
+速减速等行为，能够有效降低船舶能耗。综合对
+比而言，ADR-A*算法虽对路径长度优化较小，但
+路径有良好的适航性，更符合航海实际需求。总
+体来说ADR-A*算法在转向点数、路径长度和运
+行时间这三个关键指标上均优于其他算法，通过
+以上分析可以得出，本文提出的ADR-A*算法具
+备在多种复杂海图环境中迅速规划最短路径的能
+力，其生成的路径不仅转向点数少，且能与障碍
+物始终维持安全距离。
+ 
+2.2    讨　论
+ 
+2.2.1    突破了传统A*有方向限制节点搜索策略的
+局限性
+本文提出ADR-A*算法，并将其应用于航海
+领域求解静态环境中的路径规划问题。在对
+A*算法的节点搜索策略进行优化时，本文进行了
+一系列实验来验证不同的有方向限制的节点搜索
+ 
+开始
+设置基础参数
+使用 CDBES 处理环境
+运行 ADR-A* 算法
+否
+是
+成功规划路径?
+获取全部路径点数据
+不存在可行路径
+计算转向点
+基于 PFCS 提取关键路径点
+储存最优路径
+绘制海图环境及路径
+结束
+图 14　ADR-A*算法流程图
+Fig. 14    ADR-A* algorithm flow chart
+纪思雨等：基于ADR-A*算法的智能船舶路径规划
+
+
+=== Page 9 ===
+策略的可行性。需要注意的是，在实验过程中只
+使用A*算法，并未结合其他算法或技术，因此实
+验结果仅代表A*算法在特定搜索策略下的性能
+表现，并不代表文献的整体路径规划能力。使用
+文献
+[17] 的搜索策略，其路径规划结果如图16（a）
+所示。图16 中红色三角形为起点，绿色正方形为
+终点，图16（a）中蓝色圆点表示A*算法内close-
+list 中的点，图16（b）中蓝色虚线表示传统A*算法
+ 
+(a) 海图一
+(c) 算法优化效果对比图 (海图一)
+(d) 算法优化效果对比图 (海图二)
+(b) 海图二
+缓冲区
+警戒区
+岛礁区
+障碍物边界
+起点
+终点
+A*
+Bi−A*
+ADR−A*
+ERA*
+RRT*
+缓冲区
+警戒区
+岛礁区
+障碍物边界
+起点
+终点
+A*
+Bi−A*
+ADR−A*
+ERA*
+RRT*
+3 000
+运行时间/ms
+运行时间
+2 000
+1 000
+0
+RRT*
+463
+773.7
+2 583.1
+196.39
+78.3
+A*
+Bi-A*
+ADR-A*
+ERA*
+900
+路径长度
+路径长度
+800
+700
+600
+RRT*
+821.92
+662.78
+673.02
+682.91
+639.19
+A*
+Bi-A*
+ADR-A*
+ERA*
+路径长度
+路径长度
+800
+700
+600
+RRT*
+743.79
+647.72
+651.33
+659.08
+625.94
+A*
+Bi-A*
+ADR-A*
+ERA*
+80
+转向点数
+转向点数
+60
+40
+20
+0
+RRT*
+21.47
+61
+30
+75
+5
+A*
+Bi-A*
+ADR-A*
+ERA*
+50
+转向点数
+转向点数
+40
+30
+20
+10
+0
+RRT*
+19.14
+41
+13
+26
+6
+A*
+Bi-A*
+ADR-A*
+ERA*
+1 800
+运行时间/ms
+运行时间
+1 200
+600
+0
+RRT*
+450.5
+1 565.35
+1 624.25
+247.55
+278.66
+A*
+Bi-A*
+ADR-A*
+ERA*
+图 15　实验结果与优化效果图
+Fig. 15    Experimental results and optimization effect diagrams
+ 
+表 2    实验数据
+Table 2    Experimental data
+环境
+算法
+转向点数
+路径长度
+运行时间/ms
+成功率/%
+最小
+最大
+平均
+最小
+最大
+平均
+最小
+最大
+平均
+海图一
+RRT*
+19
+26
+21.47
+730.88
+928.06
+821.92
+200
+803
+463.00
+85
+A*
+-
+-
+61
+-
+-
+662.78
+769
+782
+773.70
+100
+Bi-A*
+-
+-
+30
+-
+-
+673.02
+2 520
+2 702
+2 583.10
+100
+ERA*[6]
+-
+-
+75
+-
+-
+682.91
+191
+205
+196.39
+100
+ADR-A*
+-
+-
+5
+-
+-
+639.19
+77
+83
+78.30
+100
+海图二
+RRT*
+17
+24
+19.14
+682.71
+891.33
+743.79
+232
+770
+450.50
+70
+A*
+-
+-
+41
+-
+-
+647.72
+1 558
+1 584
+1 565.35
+100
+Bi-A*
+-
+-
+13
+-
+-
+651.33
+1 583
+1 747
+1 624.25
+100
+ERA*[6]
+-
+-
+26
+-
+-
+659.08
+269
+291
+278.66
+100
+ADR-A*
+-
+-
+6
+-
+-
+625.94
+239
+291
+247.55
+100
+中    国    舰    船    研    究
+
+
+=== Page 10 ===
+所规划的路径，红色实线表示ADR-A*算法所规
+划的路径。
+ 
+ 
+(a) 文献[17]算法
+(b) A* 与 ADR-A* 算法
+警戒区
+缓冲区
+障碍物
+边界
+close_list
+岛礁区
+起点
+终点
+警戒区
+缓冲区
+障碍物
+边界
+A*
+岛礁区
+起点
+终点
+ADR-A*
+图 16　方向限制搜索策略的局限性
+Fig. 16    Limitations of direction-limited search strategies
+ 
+当终点位于左下方时，文献
+[17] 与ADR-A*算
+法的搜索策略如图17 所示。
+ 
+ 
+(a) 文献[17]搜索策略
+(b) ADR-A* 算法搜索策略
+图 17　终点位于当前节点左下方
+Fig. 17    The end point is at the lower left of the current node
+ 
+由于图16（a）使用了文献[17] 的有方向限制
+的节点搜索策略，算法在寻路初期向终点所在的
+右下方扩展，当寻路到终点右上方时，应继续向
+右扩展以搜索到可行路径，但因为方向限制，此
+时节点向左下方搜索，搜索节点如图17（a）所示，
+该策略无向右拓展的能力，最终导致终点不可达
+现象。使用ADR-A*算法搜索至终点右上方时，
+虽然算法整体向左下方搜索，但依然保留了向右
+和向上搜索的节点，如图17（b）中红色矩形框所
+示，算法通过以上方式保留了向其他方向搜索的
+能力，可继续向右搜索，直至绕过障碍物到达终
+点。根据以上分析可知，文献
+[17] 所示的节点搜索
+策略存在搜索不到可行路径的现象，ADR-A*算
+法可有效解决以上问题。
+本文提出的自定义方向限制优先节点搜索策
+略有效地解决了传统的有方向限制节点搜索策略
+的局限性，且规划路径的平滑性与灵活性较高，
+有良好的适航性。同时，本文将真实海图距离与
+图像像素点对应，提高了路径规划的精度，有利于
+与雷达，全球定位系统（global positioning system，
+GPS）等无缝对接，实现多源数据的融合与集成。
+ 
+2.2.2    解决A*在某些环境下穿越对角障碍物的问题
+传统A*算法在进行路径规划时，在特定的环
+境下会出现穿越对角障碍物的现象，这不仅增加
+了路径规划的风险，还导致路径不具备实际可行
+性，缺乏参考价值。由于本文使用的实验环境不
+涉及对角障碍物，因此构建了一个简单的实验场
+景，用于验证所提算法的路径规划能力。实验结
+果如图18 所示。
+ 
+ 
+(a) A* 算法穿越对角障碍物
+对角穿越
+障碍物边界
+缓冲区
+警戒区
+障碍物边界
+起点
+终点
+ADR-A*
+起点
+终点
+A*
+(b) ADR-A* 算法不穿越对角障碍物
+图 18　路径穿越对角障碍物现象
+Fig. 18    Path crossing diagonal obstacles phenomenon
+ 
+图18（a）中蓝色虚线为A*算法规划路径，图18
+（b）中红色实线为ADR-A*算法规划路径。由图18
+可以看出，在未经处理的海图环境中，A*算法会
+直接穿越对角障碍物，本文使用自定义双层边界
+膨化策略处理海图环境，使路径与障碍物相隔一
+个警戒区，提高了路径的安全性，有效解决了路
+径穿越对角障碍物的问题。
+ 
+2.2.3    保证路径安全的前提下充分剔除了冗余节点
+图19 展示了自定义双层边界膨化策略的有
+效性。图19 中，蓝色三角表示未剔除冗余点路
+径，红色圆点表示剔除后的优化路径。具体而
+言，图19（a）未使用自定义双层边界膨化策略，因
+此路径点紧挨警戒区，路径点剔除效果较差。图19
+（b）使用了自定义双层边界膨化策略，路径点位
+于缓冲区外，路径优化效果显著。
+根据图19 结果可以看出，自定义双层边界膨
+化策略在使路径点远离障碍物的同时，充分剔除
+了冗余节点，提高了路径的适航性与经济性。
+ 
+3    结　论
+为提升复杂航行环境下智能船舶的自主路径
+规划能力，提高路径的安全性与经济性，本文提
+纪思雨等：基于ADR-A*算法的智能船舶路径规划
+
+
+=== Page 11 ===
+出三种策略改进传统A*算法。第一，通过自定义
+双层边界膨化策略（CDBES）处理海图环境，在提
+高安全性的同时保留了环境真实性。第二，使用
+自适应方向限制优先节点搜索策略（ADRPSS）提
+高了路径规划效率，使寻路过程具有目标导向
+性。第三，基于路径全覆盖策略（PFCS）提取关键
+路径点，提高了路径的平滑性与经济性。仿真结
+果表明，ADR-A*算法在不同的复杂环境中均可
+以规划出一条兼具安全性、平滑性、经济性和高
+效性的综合型路径，且寻路效果稳定，有效地解
+决了智能船舶的路径规划问题。在未来的研究
+中，进一步优化算法的运行速度与适用范围，将
+离线规划与在线规划结合起来，同时考虑动态障
+碍物与实际海洋环境对智能船舶航行的影响。
+参考文献： 
+ 吕红光. 基于电子海图的多船避碰决策及路径规划研
+究[D]. 大连: 大连海事大学, 2019. doi: 10.26989/d.cn-
+ki.gdlhu.2019.000439.
+LYU  H  G.  Research  on  multi-ship  collision  avoidance
+and  path  planning  based  on  electronic  chart[D].  Dalian:
+Dalian  Maritime  University,  2019.  doi: 10.26989/d.
+cnki.gdlhu.2019.000439 (in Chinese).
+[1]
+ 吕红光, 尹勇. 基于电子海图矢量数据建模的无人船路
+径规划[J]. 交通信息与安全, 2019, 37(5): 94–106.
+LYU  H  G,  YIN  Y. Path  planning  of  autonomous  ship
+based  on  electronic  chart  vector  data  modeling[J]. Jour-
+[2]
+nal  of  Transport  Information  and  Safety, 2019, 37(5):
+94–106 (in Chinese).
+ 胡智焕, 杨子恒, 张卫东. 基于混合A*搜索和贝塞尔曲
+线的船舶进港和靠泊路径规划算法[J]. 中国舰船研究,
+2024, 19(1): 220–229.
+HU Z H, YANG Z H, ZHANG W D. Path planning for
+auto  docking  of  underactuated  ships  based  on  Bezier
+curve  and  Hybrid  A*  search  algorithm[J]. Chinese Jour-
+nal  of  Ship  Research, 2024, 19(1): 220–229 (in
+Chinese).
+[3]
+ 关巍, 曲胜, 张显库, 等. 基于改进DQN 算法的船舶全
+局路径规划研究[J]. 中国舰船研究, 2025, 20(1):
+107–114.
+GUAN  W,  QU  S,  ZHANG  X  K,  et  al. Ship  global  path
+planning  based  on  improved  DQN  algorithm[J]. Chi-
+nese Journal of Ship Research, 2025, 20(1): 107–114.
+[4]
+ LI  H,  CHU  Z  Y,  FANG  Y,  et  al. Source-seeking  multi-
+robot  team  simulator  as  container  of  nature-inspired
+metaheuristic  algorithms  and  Astar  algorithm[J]. Expert
+Systems with Applications, 2023, 233: 120932.
+[5]
+ AMMAR  A. ERA*:  enhanced  relaxed  A*  algorithm  for
+solving  the  shortest  path  problem  in  regular  grid
+maps[J]. Information Sciences, 2024, 657: 120000.
+[6]
+ LI  C  G,  HUANG  X,  DING  J,  et  al. Global path  plan-
+ning based on a bidirectional alternating search A* algo-
+rithm  for  mobile  robots[J]. Computers &  Industrial  En-
+gineering, 2022, 168: 108123.
+[7]
+ 王敏, 石明航, 洪梅, 等. 基于同步双向A 星和灰狼优
+化的多点巡航规划[J]. 电子测量技术, 2025, 48(1):
+1–7.
+WANG  M,  SHI  M  H,  HONG  M,  et  al. Multi-purpose
+cruise  path  planning  based  on  the  two-way  A-star  and
+the  gray  wolf  algorithms[J]. Electronic  Measurement
+Technology, 2025, 48(1): 1–7 (in Chinese).
+[8]
+ 胡明哲, 李旭光, 任智颖, 等. 基于改进启发函数的
+A*算法的无人机三维路径规划[J]. 兵工学报, 2024,
+45(S1): 302–307.
+HU M Z, LI X G, REN Z Y, et al. UAV 3D path plan-
+ning  based  on  A* algorithm  with  improved  heuristic
+function[J]. Acta  Armamentarii, 2024, 45(S1): 302–307
+(in Chinese).
+[9]
+ 姚得鑫, 伞红军, 王雅如, 等. 移动机器人路径规划中
+A*算法的改进研究[J]. 系统仿真学报, 2024, 36(11):
+2684–2698.
+YAO  D  X,  SHAN  H  J,  WANG  Y  R,  et  al. Improve-
+ment  of  A*  algorithm  in  path  planning  of  mobile
+robot[J]. Journal  of  System  Simulation, 2024, 36(11):
+2684–2698 (in Chinese).
+[10]
+ WANG  Y  C,  FU  C  H,  HUANG  R  Y,  et  al. Path plan-
+ning  for  mobile  robots  in  greenhouse  orchards  based  on
+improved  A*  and  fuzzy  DWA  algorithms[J]. Computers
+and Electronics in Agriculture, 2024, 227: 109598.
+[11]
+ 
+(a) 无缓冲区路径优化结果
+(b) 有缓冲区路径优化结果
+警戒区
+缓冲区
+障碍物边界
+未剔除冗余点路径
+岛礁区
+起点
+终点
+剔除后优化路径
+警戒区
+缓冲区
+障碍物边界
+未剔除冗余点路径
+岛礁区
+起点
+终点
+剔除后优化路径
+图 19　路径优化结果示意图
+Fig. 19    Schematic diagram of path optimization results
+中    国    舰    船    研    究
+
+
+=== Page 12 ===
+ HE  Y,  HOU  T  C,  WANG  M  R. A new  method  for  un-
+manned aerial vehicle path planning in complex environ-
+ments[J]. Scientific Reports, 2024, 14(1): 9257.
+[12]
+ XU  X,  ZENG  J  Z,  ZHAO  Y,  et  al. Research  on  global
+path planning  algorithm  for  mobile  robots  based  on  im-
+proved  A*[J]. Expert  Systems  with  Applications, 2024,
+243: 122922.
+[13]
+ 钟佩思, 曹泉虎, 刘梅, 等. 基于改进Hybrid A*算法的
+阿克曼移动机器人路径规划[J]. 组合机床与自动化加
+工技术, 2023(8): 122–126.
+ZHONG  P  S,  CAO  Q  H,  LIU  M,  et  al. Path  planning
+for  ackerman  mobile  robot  based  on  improved  Hybrid
+A* algorithm[J]. Modular  Machine  Tool  &  Automatic
+Manufacturing  Technique, 2023(8): 122–126 (in Chi-
+nese).
+[14]
+ LV  Z  H,  NI  L,  PENG  H  C,  et  al. Research  on  global
+off-road
+ path
+ planning
+ based
+ on
+ improved
+ A*
+algorithm[J]. ISPRS  International  Journal  of  Geo-Infor-
+mation, 2024, 13(10): 362.
+[15]
+ SONG  C  Y,  GUO  T  E,  SUI  J  H. Ship  path  planning
+based  on  improved  multi-scale A*  algorithm  of  colli-
+sion  risk  function[J]. Scientific  Reports, 2024, 14(1):
+30418.
+[16]
+ 李文辉, 简玉梅, 孔勇, 等. 基于改进A*蚁群算法的平
+滑路径规划方法[J]. 制造业自动化, 2023, 45(9):
+157–164.
+LI  W  H,  JIAN  Y  M,  KONG  Y,  et  al. Smooth  path
+planning method based on improved A* ant colony algo-
+rithm[J]. 
+Manufacturing
+ Automation, 
+2023, 
+45(9):
+157–164 (in Chinese).
+[17]
+ 姬鹏, 张新元, 高帅轩, 等. 融合改进A*算法与动态窗
+口法的路径规划研究[J]. 系统仿真学报, 2024, 36(9):
+2171–2180.
+JI  P,  ZHANG  X  Y,  GAO  S  X,  et  al. Path  planning
+based
+ on
+ improved
+ A*
+ and
+ dynamic
+ window
+approach[J]. Journal  of  System  Simulation, 2024, 36(9):
+2171–2180 (in Chinese).
+[18]
+ 
+Intelligent ship path planning based on ADR-A* algorithm
+JI Siyu
+1, LÜ Hongguang
+*1, ZHANG Lunping
+2, ZHAO Yanjie
+2, XING Hui
+3, YIN Yong
+1
+1 Navigation College, Dalian Maritime University, Dalian 116026, China
+2 China Ship Scientific Research Center, Wuxi 214028, China
+3 Marine Engineering College, Dalian Maritime University, Dalian 116026, China
+Abstract: ［Objectives］In order to improve the autonomous path planning ability of intelligent ships under
+complex navigation environment, and to improve the traditional A* algorithm's problem of planning paths in
+complex obstacle environments with many nodes and close distances to obstacles, an Adaptive Direction Re-
+striction-A* (ADR-A*) algorithm is proposed. ［Methods］Firstly, a Customizable Double-layer Boundary
+Expansion Strategy (CDBES) is proposed, which preprocesses the chart environment by extracting the obsta-
+cle boundaries, and generates the first-layer expanded chart and the second-layer expanded chart. The algo-
+rithm generates initial paths outside the second-layer expanded chart and eliminates redundant nodes outside
+the first-layer expanded chart. By customizing the buffer zone and warning zone, CDBES enables the plan-
+ning algorithm to adjust the distance of the path points away from the obstacle boundary on demand while con-
+sidering the real boundary characteristics of the obstacle, and provides a solution space for optimizing the path
+to eliminate redundant nodes, which lays a solid foundation for the overall path planning process. Secondly,
+the node search method of A* algorithm is improved, and the Adaptive Direction Restriction Priority-node
+Search Strategy (ADRPSS) is innovatively proposed. This strategy defines the neighboring nodes as second-
+priority nodes and priority nodes, improves the quality of search nodes by traversing the priority nodes, and
+further improves the search speed by eliminating search nodes with low relevance according to the endpoint
+position. ADRPSS can adaptively update the position and number of search nodes according to the informa-
+tion of the chart obstacles and the endpoint position, which strengthens the goal-directedness of the algorithm,
+and significantly enhances the efficiency of the path planning. Finally, a new Path Full Coverage Strategy
+(PFCS) is proposed to improve the path smoothness. This strategy treats the path as a region with a certain
+width instead of a single line, and conducts collision detection based on it to eliminate dangerous points and re-
+dundant nodes, which results in a more comprehensive algorithmic safety assessment, fewer retained nodes,
+and smoother paths. ［Results］The experimental data show that compared with the A* algorithm, Bi-A* al-
+gorithm, ERA* algorithm and RRT* algorithm, in chart I, the ADR-A* algorithm reduces the path length by
+3.56%, optimizes the running time by 60.13% and reduces the number of steering points by 76.71%. In chart
+II, the ADR-A* algorithm reduces the path length by 3.36%, optimizes the running time by 11.16%, and re-
+duces the number of steering points by 53.85%. ［Conclusions］The experimental results show that the algo-
+纪思雨等：基于ADR-A*算法的智能船舶路径规划
+
+
+=== Page 13 ===
+rithm can plan a navigable path with safety, economy and smoothness under the complex environment, which
+verifies the autonomous path planning capability of the ADR-A* algorithm, and provides an optimized solu-
+tion and safety guarantee for the design of autonomous routes for intelligent ships.
+Key words: path planning；motion planning；astar algorithm；intelligent ship
+中    国    舰    船    研    究
+
+
