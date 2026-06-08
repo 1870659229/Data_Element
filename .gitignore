@@ -40,8 +40,8 @@ data_osm/waterways.geojson
 data_osm/water_polygons.geojson
 data_osm/water_polygons_buffer500m.geojson
 
-# 论文参考 PDF（独立归档）
-参考文献/**/*.pdf
+# 论文参考（整个目录不进 git，含 PDF + .md 笔记）
+参考文献/
 
 # 训练产出的大文件
 output/cleaned_data.csv
@@ -58,3 +58,12 @@ _verify_waypoints/_*.py
 *.bak
 *_dbscan.*
 *_hdbscan.*
+# 推送辅助临时文件
+_batch_*.json
+_files_manifest.json
+_prep_push.py
+_show_batch.py
+_show2.py
+_split2.py
+_split3.py
+_rebuild_manifest.py
