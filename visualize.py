@@ -62,9 +62,9 @@ class TopologyVisualizer:
         for node_id, attrs in graph.nodes(data=True):
             node_type = attrs.get('node_type', 'waypoint')
             node_colors.append(type_colors.get(node_type, '#CCCCCC'))
-        frequencies = [attrs['frequency'] for _, attrs in graph.nodes(data=True)]
-        max_freq = max(frequencies) if frequencies else 1
-        node_sizes = [self.config['node_size'] * (freq / max_freq) for freq in frequencies]
+        frequencies = [attrs.get('frequency', 0) for _, attrs in graph.nodes(data=True)]
+        max_freq = max(frequencies) if frequencies else 0
+        node_sizes = [self.config['node_size'] * (freq / max_freq) if max_freq > 0 else self.config['node_size'] for freq in frequencies]
         edge_weights = [attrs.get('weight', 1) for _, _, attrs in graph.edges(data=True)]
         max_weight = max(edge_weights) if edge_weights else 1
         edge_widths = [self.config['edge_width'] * (w / max_weight) for w in edge_weights]
@@ -321,6 +321,61 @@ class TopologyVisualizer:
             plt.savefig(output_path, dpi=self.config['dpi'], bbox_inches='tight')
             logger.info("路径对比图已保存: %s", output_path)
         plt.close()
+
+
+def visualize_routes(G: nx.DiGraph, paths: list, output_path: str,
+                    title: str = "差异化路径规划"):
+    """在拓扑图上绘制多条差异化路径
+    
+    Args:
+        G: 拓扑有向图
+        paths: 路径列表，每条为节点ID列表
+        output_path: 输出图片路径
+        title: 图标题
+    """
+    fig, ax = plt.subplots(figsize=(14, 10))
+    
+    pos = {n: (G.nodes[n]['lon'], G.nodes[n]['lat']) for n in G.nodes()}
+    
+    # 背景拓扑
+    nx.draw_networkx_edges(G, pos, alpha=0.08, edge_color='gray', ax=ax, width=0.5)
+    nx.draw_networkx_nodes(G, pos, node_size=3, node_color='lightblue', alpha=0.3, ax=ax)
+    
+    colors = ['#E53935', '#1E88E5', '#43A047', '#FB8C00', '#8E24AA']
+    labels = ['最短路径', '最快路径', '综合最优', '安全优先', '备选路径']
+    
+    for i, path_nodes in enumerate(paths[:5]):
+        color = colors[i % len(colors)]
+        label = labels[i] if i < len(labels) else f"路径{i+1}"
+        
+        path_edges = list(zip(path_nodes[:-1], path_nodes[1:]))
+        valid_edges = []
+        for u, v in path_edges:
+            if G.has_edge(u, v):
+                valid_edges.append((u, v))
+            elif G.has_edge(v, u):
+                valid_edges.append((v, u))
+        
+        if valid_edges:
+            nx.draw_networkx_edges(
+                G, pos, edgelist=valid_edges,
+                edge_color=color, width=2.5, alpha=0.85, ax=ax,
+                label=f"{label} ({len(path_nodes)}节点)"
+            )
+        # 标记起终点
+        sx, sy = pos[path_nodes[0]]
+        ex, ey = pos[path_nodes[-1]]
+        ax.scatter(sx, sy, c='green', s=80, marker='o', zorder=5, edgecolors='black', linewidths=1)
+        ax.scatter(ex, ey, c='darkred', s=80, marker='X', zorder=5, edgecolors='black', linewidths=1)
+    
+    ax.legend(loc='best', fontsize=9)
+    ax.set_title(title, fontsize=14)
+    ax.set_xlabel('经度')
+    ax.set_ylabel('纬度')
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    logger.info("路径规划图已保存: %s", output_path)
 
 
 def main():
