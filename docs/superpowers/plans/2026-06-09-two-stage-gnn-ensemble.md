@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 把 `advanced_weight_model.py` 中硬编码的 GAT 5-seed 集成改为"两阶段":先在 1 个 seed 上对比 GAT/PNA 选出赢家,再对赢家做 5-seed 集成,保证 PNA 不会被硬编码歧视。
+**Goal:** 在 `advanced_weight_model.py` 入口加一个"找最优 + 稳定性验证"步骤:从 `build_weights_with_comparison` 跑出的 7 个模型里选 R² 最高的,如果最优是 GNN(GAT 或 PNA)就再跑 5 个 seed 看 mean ± std,其他模型(XGBoost/LightGBM/RF/NGBoost)单次 R² 即代表稳定性。
 
-**Architecture:** 单文件改造,改动局限在 `if __name__ == "__main__":` 入口的 GNN 集成块(约 2853-2900 行)。Stage 1 跑 GAT/PNA 各 1 个 seed(用 `seed=42`,与 `build_weights_with_comparison` 内的初次训练保持一致,便于对照);Stage 2 跑赢家 arch 的 5 个 seed 做集成。
+**Architecture:** 单文件改造,改动局限在 `if __name__ == "__main__":` 入口、原 GNN 集成块的位置。先 `max(_model_results, key=R²)` 选最优,然后 `if best ∈ {gnn, pna} and HAS_PYG:` 跑 5 seed 稳定性,else 跳过。
 
-**关键优化(2026-06-09 追加):** Stage 1 已经为赢家 arch 训练过 `seed=42`,Stage 2 复用该结果作为 5-seed 集成的第 0 项,只再跑 4 个新 seed。整体训练时间从原 1.0× 增加到约 **1.02×**(只多 4 个新 seed,原本省 1 个 seed),既保证公平选 arch,又不浪费算力。
+**简化迭代(2026-06-09 晚):** 最初设计是"两阶段"——Stage 1 选 GAT/PNA 赢家,Stage 2 对赢家做 5-seed 集成。这个设计对 GAT vs PNA 的 arch 选择是公平的,但有两个问题:(1) 选 arch 时只看 GAT vs PNA,不看 XGBoost/LightGBM 等,可能选错;(2) 跑 5 seed 是为了"集成提分",但用户实际想要的是"验证稳定性"。简化版直接选 7 个模型里的最优,只对 GNN 做 5-seed 验证(其他模型波动小,单次即代表)。
 
 **Tech Stack:** Python 3, PyTorch, PyTorch Geometric, NumPy, sklearn (R²/MAE/RMSE), 现有 `AdvancedWeightModel._train_gnn` + 顶层函数 `train_gnn_with_seed`
 

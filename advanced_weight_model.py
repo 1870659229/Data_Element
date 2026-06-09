@@ -977,7 +977,7 @@ class AdvancedWeightModel:
         self._print_comparison_table(results)
         self._model_results = results
 
-        # 所有模型统一在时间空间评估边×时段级别 R²
+        # 所有模型统一在时间空间评估边×时段级别 R2
         for model_name, result in results.items():
             if result.model is None:
                 continue
@@ -2847,77 +2847,70 @@ if __name__ == '__main__':
     model = AdvancedWeightModel()
     edge_features = model.build_weights_with_comparison(graph, cleaned_df, use_grid_search=True)
 
-    # ===== GNN 两阶段集成 =====
-    if HAS_PYG:
+    # ===== 最优模型 + 稳定性验证 =====
+    print(f"\n{'='*60}")
+    print(f"Step: 找最优 + 稳定性验证")
+    print(f"{'='*60}")
+
+    # 1. 选最优(从 build_weights_with_comparison 跑出的 7 个模型里)
+    best_name = max(model._model_results, key=lambda k: model._model_results[k].r2)
+    best_r2 = model._model_results[best_name].r2
+    print(f"  最优单次模型: {best_name} (R2={best_r2:.4f})")
+
+    # 2. 稳定性验证:仅对 GNN(波动大)做 5-seed,其他模型单次即代表
+    if HAS_PYG and best_name in ('gnn', 'pna'):
+        arch = 'gat' if best_name == 'gnn' else 'pna'
         SEEDS = [42, 123, 456, 789, 1011]
-        GNN_ARCHES = ['gat', 'pna']
+        print(f"\n  {best_name} 是 GNN 家族,跑 5 个 seed 验证稳定性")
 
-        # ---------- Stage 1: 单 seed 选 arch (seed=42) ----------
-        print(f"\n{'='*60}")
-        print(f"GNN Stage 1: 各 arch 单 seed 选赢家 (seed=42)")
-        print(f"{'='*60}")
+        runs = []
+        for seed in SEEDS:
+            r = train_gnn_with_seed(model, seed, gnn_arch=arch)
+            runs.append(r)
+            print(f"  {arch} seed={seed}: R2={r.r2:.4f} MAE={r.mae:.2f}s")
 
-        stage1_results = {}
-        for arch in GNN_ARCHES:
-            r = train_gnn_with_seed(model, 42, gnn_arch=arch)
-            stage1_results[arch] = r
-            print(f"  {arch} (seed=42): R2={r.r2:.4f}  MAE={r.mae:.2f}s")
+        rs = [r.r2 for r in runs]
+        mean_r2 = float(np.mean(rs))
+        std_r2 = float(np.std(rs))
+        print(f"\n  {arch} 5-seed 稳定性: R2={mean_r2:.4f} ± {std_r2:.4f}  (min={min(rs):.4f}, max={max(rs):.4f})")
 
-        winner_arch = max(stage1_results, key=lambda a: stage1_results[a].r2)
-        print(f"\n  -> Stage 1 赢家: {winner_arch} (R2={stage1_results[winner_arch].r2:.4f})")
-
-        # ---------- Stage 2: 赢家 arch 跑 5 seed 集成(复用 Stage 1 的 seed=42,只跑 4 个新 seed) ----------
-        print(f"\n{'='*60}")
-        print(f"GNN Stage 2: {winner_arch} 5 seed 集成 (复用 seed=42 + 4 新 seed)")
-        print(f"{'='*60}")
-
-        gnn_seed_results = [stage1_results[winner_arch]]  # 复用 Stage 1 的 seed=42
-        gnn_all_preds = [stage1_results[winner_arch].predictions] if stage1_results[winner_arch].predictions is not None else []
-        print(f"  {winner_arch} seed=42 (复用): R2={stage1_results[winner_arch].r2:.4f} MAE={stage1_results[winner_arch].mae:.2f}s")
-
-        for seed in SEEDS[1:]:  # 跳过 42,只跑 4 个新 seed
-            r = train_gnn_with_seed(model, seed, gnn_arch=winner_arch)
-            print(f"  {winner_arch} seed={seed}: R2={r.r2:.4f} MAE={r.mae:.2f}s")
-            gnn_seed_results.append(r)
-            if r.predictions is not None:
-                gnn_all_preds.append(r.predictions)
-
+        # 集成预测(5 seed 预测平均)
+        gnn_all_preds = [r.predictions for r in runs if r.predictions is not None]
         if gnn_all_preds:
             avg_pred = np.mean(gnn_all_preds, axis=0)
-            y_true = gnn_seed_results[0].y_test
-
+            y_true = runs[0].y_test
             ens_mae = mean_absolute_error(y_true, avg_pred)
             ens_rmse = np.sqrt(mean_squared_error(y_true, avg_pred))
             ens_r2 = r2_score(y_true, avg_pred)
             mask = y_true != 0
             ens_mape = np.mean(np.abs((y_true[mask] - avg_pred[mask]) / y_true[mask])) * 100 if mask.any() else 0
 
-            ens_avg_r2 = float(np.mean([r.r2 for r in gnn_seed_results]))
-            ens_std_r2 = float(np.std([r.r2 for r in gnn_seed_results]))
+            print(f"  集成预测: R2={ens_r2:.4f}  MAE={ens_mae:.2f}s  RMSE={ens_rmse:.2f}s  MAPE={ens_mape:.2f}%")
 
-            print(f"\n  {winner_arch} 集成 ({len(gnn_seed_results)} seed): R2={ens_r2:.4f}  MAE={ens_mae:.2f}s  RMSE={ens_rmse:.2f}s  MAPE={ens_mape:.2f}%")
-            print(f"  {winner_arch} 单 seed 平均: R2={ens_avg_r2:.4f} ± {ens_std_r2:.4f}")
-
-            ens_name = f'{winner_arch}_ensemble_{len(gnn_seed_results)}seed'
+            ens_name = f'{arch}_stability_5seed'
             ens_result = ModelResult(
                 model_name=ens_name,
-                train_time=sum(r.train_time for r in gnn_seed_results),
+                train_time=sum(r.train_time for r in runs),
                 mae=ens_mae,
                 rmse=ens_rmse,
                 r2=ens_r2,
                 mape=ens_mape,
-                model=gnn_seed_results[-1].model,
+                model=runs[-1].model,
                 predictions=avg_pred,
                 use_log_transform=False,
                 y_test=y_true
             )
             model._model_results[ens_name] = ens_result
 
-            best_r2 = model._model_results[model.best_model_name].r2 if model.best_model_name else -1
             if ens_r2 > best_r2:
-                print(f"  -> 集成模型 (R2={ens_r2:.4f}) 优于当前最优 {model.best_model_name} (R2={best_r2:.4f}), 设为最佳模型")
+                print(f"  -> 集成 (R2={ens_r2:.4f}) 优于单次 {best_name} (R2={best_r2:.4f}), 设为最佳")
                 model.best_model_name = ens_name
-                model.best_model = gnn_seed_results[-1].model
+                model.best_model = runs[-1].model
+            else:
+                print(f"  -> 集成 (R2={ens_r2:.4f}) 未超过单次 {best_name} (R2={best_r2:.4f}), 保留 {best_name} 为 best")
+    else:
+        reason = "PyG 不可用" if not HAS_PYG else f"{best_name} 非 GNN"
+        print(f"\n  跳过 5-seed 验证 ({reason},单次 R2 即代表稳定性)")
 
     output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'output')
     model.export_results(output_dir)
