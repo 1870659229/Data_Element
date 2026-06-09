@@ -2847,18 +2847,37 @@ if __name__ == '__main__':
     model = AdvancedWeightModel()
     edge_features = model.build_weights_with_comparison(graph, cleaned_df, use_grid_search=True)
 
-    # ===== GNN 多 seed 集成 =====
+    # ===== GNN 两阶段集成 =====
     if HAS_PYG:
         SEEDS = [42, 123, 456, 789, 1011]
+        GNN_ARCHES = ['gat', 'pna']
+
+        # ---------- Stage 1: 单 seed 选 arch (seed=42) ----------
         print(f"\n{'='*60}")
-        print(f"GNN 多 seed 集成 (n={len(SEEDS)})")
+        print(f"GNN Stage 1: 各 arch 单 seed 选赢家 (seed=42)")
         print(f"{'='*60}")
 
-        gnn_seed_results = []
-        gnn_all_preds = []
-        for seed in SEEDS:
-            r = train_gnn_with_seed(model, seed, gnn_arch='gat')
-            print(f"  GNN seed={seed}: R2={r.r2:.4f} MAE={r.mae:.2f}s")
+        stage1_results = {}
+        for arch in GNN_ARCHES:
+            r = train_gnn_with_seed(model, 42, gnn_arch=arch)
+            stage1_results[arch] = r
+            print(f"  {arch} (seed=42): R2={r.r2:.4f}  MAE={r.mae:.2f}s")
+
+        winner_arch = max(stage1_results, key=lambda a: stage1_results[a].r2)
+        print(f"\n  -> Stage 1 赢家: {winner_arch} (R2={stage1_results[winner_arch].r2:.4f})")
+
+        # ---------- Stage 2: 赢家 arch 跑 5 seed 集成(复用 Stage 1 的 seed=42,只跑 4 个新 seed) ----------
+        print(f"\n{'='*60}")
+        print(f"GNN Stage 2: {winner_arch} 5 seed 集成 (复用 seed=42 + 4 新 seed)")
+        print(f"{'='*60}")
+
+        gnn_seed_results = [stage1_results[winner_arch]]  # 复用 Stage 1 的 seed=42
+        gnn_all_preds = [stage1_results[winner_arch].predictions] if stage1_results[winner_arch].predictions is not None else []
+        print(f"  {winner_arch} seed=42 (复用): R2={stage1_results[winner_arch].r2:.4f} MAE={stage1_results[winner_arch].mae:.2f}s")
+
+        for seed in SEEDS[1:]:  # 跳过 42,只跑 4 个新 seed
+            r = train_gnn_with_seed(model, seed, gnn_arch=winner_arch)
+            print(f"  {winner_arch} seed={seed}: R2={r.r2:.4f} MAE={r.mae:.2f}s")
             gnn_seed_results.append(r)
             if r.predictions is not None:
                 gnn_all_preds.append(r.predictions)
@@ -2876,11 +2895,12 @@ if __name__ == '__main__':
             ens_avg_r2 = float(np.mean([r.r2 for r in gnn_seed_results]))
             ens_std_r2 = float(np.std([r.r2 for r in gnn_seed_results]))
 
-            print(f"\n  GNN 集成 ({len(SEEDS)} seed): R2={ens_r2:.4f}  MAE={ens_mae:.2f}s  RMSE={ens_rmse:.2f}s  MAPE={ens_mape:.2f}%")
-            print(f"  GNN 单 seed 平均: R2={ens_avg_r2:.4f} ± {ens_std_r2:.4f}")
+            print(f"\n  {winner_arch} 集成 ({len(gnn_seed_results)} seed): R2={ens_r2:.4f}  MAE={ens_mae:.2f}s  RMSE={ens_rmse:.2f}s  MAPE={ens_mape:.2f}%")
+            print(f"  {winner_arch} 单 seed 平均: R2={ens_avg_r2:.4f} ± {ens_std_r2:.4f}")
 
+            ens_name = f'{winner_arch}_ensemble_{len(gnn_seed_results)}seed'
             ens_result = ModelResult(
-                model_name=f'gnn_ensemble_{len(SEEDS)}seed',
+                model_name=ens_name,
                 train_time=sum(r.train_time for r in gnn_seed_results),
                 mae=ens_mae,
                 rmse=ens_rmse,
@@ -2891,13 +2911,12 @@ if __name__ == '__main__':
                 use_log_transform=False,
                 y_test=y_true
             )
-            model._model_results['gnn_ensemble'] = ens_result
+            model._model_results[ens_name] = ens_result
 
             best_r2 = model._model_results[model.best_model_name].r2 if model.best_model_name else -1
             if ens_r2 > best_r2:
                 print(f"  -> 集成模型 (R2={ens_r2:.4f}) 优于当前最优 {model.best_model_name} (R2={best_r2:.4f}), 设为最佳模型")
-                model.best_model_name = 'gnn_ensemble'
-                # 保留最后一个 seed 的 GNN 模型，用于后续 _predict_with_gnn 调用
+                model.best_model_name = ens_name
                 model.best_model = gnn_seed_results[-1].model
 
     output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'output')
