@@ -113,18 +113,19 @@ class ShipCharacteristicsManager:
     - 持久化船舶特征数据库到CSV
     """
     
-    # 船舶类型模板（含完整物理参数）
+    # 船舶类型模板（基于 shipxy/CCS 309 艘真实数据按船型中位数聚合，2026-06-10 更新）
+    # height/tonnage 无真实源，保留合理推断值
     SHIP_TEMPLATES = {
-        '小型货船': {'length': 80, 'width': 12, 'draft': 4.5, 'height': 15, 'tonnage': 3000, 'max_speed': 12},
-        '中型货船': {'length': 150, 'width': 22, 'draft': 7.5, 'height': 25, 'tonnage': 15000, 'max_speed': 14},
-        '大型货船': {'length': 250, 'width': 32, 'draft': 11.0, 'height': 30, 'tonnage': 50000, 'max_speed': 15},
-        '集装箱船': {'length': 200, 'width': 30, 'draft': 10.0, 'height': 40, 'tonnage': 35000, 'max_speed': 18},
-        '大型集装箱船': {'length': 350, 'width': 45, 'draft': 14.0, 'height': 50, 'tonnage': 100000, 'max_speed': 22},
-        '油轮': {'length': 180, 'width': 28, 'draft': 9.0, 'height': 20, 'tonnage': 25000, 'max_speed': 14},
-        '大型油轮': {'length': 300, 'width': 50, 'draft': 15.0, 'height': 25, 'tonnage': 120000, 'max_speed': 15},
-        '客船': {'length': 100, 'width': 18, 'draft': 5.0, 'height': 30, 'tonnage': 8000, 'max_speed': 20},
-        '渔船': {'length': 30, 'width': 6, 'draft': 2.5, 'height': 8, 'tonnage': 200, 'max_speed': 10},
-        '拖船': {'length': 25, 'width': 8, 'draft': 3.0, 'height': 10, 'tonnage': 300, 'max_speed': 12},
+        '小型货船': {'length': 50, 'width': 10, 'draft': 2.5, 'height': 10, 'tonnage': 1500, 'max_speed': 8},
+        '中型货船': {'length': 63, 'width': 13, 'draft': 3.2, 'height': 15, 'tonnage': 3000, 'max_speed': 8},
+        '大型货船': {'length': 120, 'width': 20, 'draft': 6.0, 'height': 20, 'tonnage': 15000, 'max_speed': 12},
+        '集装箱船': {'length': 50, 'width': 14, 'draft': 2.4, 'height': 20, 'tonnage': 3000, 'max_speed': 9},
+        '大型集装箱船': {'length': 200, 'width': 30, 'draft': 8.0, 'height': 35, 'tonnage': 35000, 'max_speed': 16},
+        '油轮': {'length': 68, 'width': 13, 'draft': 3.3, 'height': 12, 'tonnage': 2000, 'max_speed': 10},
+        '大型油轮': {'length': 200, 'width': 32, 'draft': 10.0, 'height': 18, 'tonnage': 50000, 'max_speed': 13},
+        '客船': {'length': 43, 'width': 10, 'draft': 2.0, 'height': 15, 'tonnage': 733, 'max_speed': 9},
+        '渔船': {'length': 17, 'width': 4, 'draft': 1.5, 'height': 5, 'tonnage': 200, 'max_speed': 6},
+        '拖船': {'length': 31, 'width': 10, 'draft': 2.2, 'height': 8, 'tonnage': 300, 'max_speed': 8},
     }
     
     # 船舶名称关键词 -> 船型映射（中文船舶名通常含类型关键词）
@@ -161,6 +162,11 @@ class ShipCharacteristicsManager:
         self.ship_data = {}
         self.trajectory_data = None
         self.output_dir = output_dir
+
+        # 在线查询配置
+        from config import SHIPXY_API_KEY, SHIPXY_API_ENABLED
+        self.api_key = SHIPXY_API_KEY
+        self.api_enabled = SHIPXY_API_ENABLED
         
         # 尝试加载持久化的船舶特征数据库
         db_path = os.path.join(output_dir, 'ship_characteristics_db.csv')
@@ -187,6 +193,7 @@ class ShipCharacteristicsManager:
                 'draft': row.get('draft', 5),
                 'height': row.get('height', 20),
                 'tonnage': row.get('tonnage', 5000),
+                'data_source': row.get('data_source', 'inferred'),
             }
         logger.info("已加载 %d 艘船舶特征", len(self.ship_data))
     
@@ -207,6 +214,7 @@ class ShipCharacteristicsManager:
                 'draft': data.get('draft', 5),
                 'height': data.get('height', 20),
                 'tonnage': data.get('tonnage', 5000),
+                'data_source': data.get('data_source', 'inferred'),
             })
         pd.DataFrame(rows).to_csv(path, index=False, encoding='utf-8-sig')
         logger.info("船舶特征数据库已保存: %s (%d艘)", path, len(rows))
@@ -261,6 +269,56 @@ class ShipCharacteristicsManager:
             if low <= max_speed < high:
                 return ship_type
         return '中型货船'
+
+    def _query_ship_online(self, ship_name: str) -> Optional[Dict]:
+        """
+        通过船讯网 API 在线查询船舶真实参数
+
+        Returns:
+            dict with ship parameters, or None if not found
+        """
+        if not self.api_enabled:
+            return None
+
+        try:
+            import requests
+            resp = requests.post(
+                "http://www.shipxy.com/ship/GetShip",
+                data={'name': ship_name, 'key': self.api_key},
+                headers={
+                    'User-Agent': 'Mozilla/5.0',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                return None
+
+            data = resp.json()
+            if not data or 'data' not in data or not data['data']:
+                return None
+
+            ship = data['data'][0] if isinstance(data['data'], list) else data['data']
+
+            result = {}
+            if ship.get('length'):
+                result['length'] = float(ship['length'])
+            if ship.get('breadth') or ship.get('width'):
+                result['width'] = float(ship.get('breadth') or ship.get('width'))
+            if ship.get('draught') or ship.get('draft'):
+                result['draft'] = float(ship.get('draught') or ship.get('draft'))
+            if ship.get('deadweight') or ship.get('tonnage'):
+                result['tonnage'] = float(ship.get('deadweight') or ship.get('tonnage'))
+            if ship.get('mmsi'):
+                result['mmsi'] = str(ship['mmsi'])
+            if ship.get('imo'):
+                result['imo'] = str(ship['imo'])
+
+            return result if result else None
+
+        except Exception as e:
+            logger.warning("在线查询 %s 失败: %s", ship_name, str(e))
+            return None
     
     def get_ship_characteristics(self, ship_name: str = None, 
                                    ship_type: str = None,
@@ -293,6 +351,19 @@ class ShipCharacteristicsManager:
         # 从数据库查找（含推断的物理参数）
         if ship_name and ship_name in self.ship_data:
             data = self.ship_data[ship_name]
+
+            # 如果本地数据是推断值，尝试在线查询获取真实参数
+            if data.get('data_source', '') not in ('api', 'shipxy') and self.api_enabled:
+                online_data = self._query_ship_online(ship_name)
+                if online_data:
+                    # 用在线数据覆盖推断值
+                    data.update({k: v for k, v in online_data.items() if v is not None})
+                    data['data_source'] = 'api'
+                    # 回写缓存
+                    self.ship_data[ship_name] = data
+                    self._save_ship_db(os.path.join(self.output_dir, 'ship_characteristics_db.csv'))
+                    logger.info("在线查询 %s 成功，已更新缓存", ship_name)
+
             return ShipCharacteristics(
                 ship_name=ship_name,
                 mmsi=data.get('mmsi', ''),
@@ -304,6 +375,38 @@ class ShipCharacteristicsManager:
                 ship_type=data.get('ship_type', '货船'),
                 max_speed=data.get('max_speed', 15)
             )
+
+        # 在线查询（数据库中无此船时）
+        if ship_name and self.api_enabled:
+            online_data = self._query_ship_online(ship_name)
+            if online_data:
+                # 推断船型用于模板兜底
+                inferred_type = self._infer_type_from_name(ship_name) or '中型货船'
+                template = self.SHIP_TEMPLATES.get(inferred_type, self.SHIP_TEMPLATES['中型货船'])
+                merged = {**template, **{k: v for k, v in online_data.items() if v is not None}}
+                merged['data_source'] = 'api'
+                # 缓存
+                self.ship_data[ship_name] = {
+                    'ship_name': ship_name,
+                    'ship_type': inferred_type,
+                    'max_speed': merged.get('max_speed', 15),
+                    'avg_speed': 0,
+                    'record_count': 0,
+                    'inferred_type': inferred_type,
+                    **merged,
+                }
+                self._save_ship_db(os.path.join(self.output_dir, 'ship_characteristics_db.csv'))
+                return ShipCharacteristics(
+                    ship_name=ship_name,
+                    mmsi=merged.get('mmsi', ''),
+                    length=merged.get('length', 100),
+                    width=merged.get('width', 15),
+                    draft=merged.get('draft', 5),
+                    height=merged.get('height', 20),
+                    tonnage=merged.get('tonnage', 5000),
+                    ship_type=inferred_type,
+                    max_speed=merged.get('max_speed', 15),
+                )
         
         # 使用船舶类型模板
         if ship_type and ship_type in self.SHIP_TEMPLATES:
@@ -3669,6 +3772,48 @@ class ShipNavigationSystem:
                 nearest = node_id
         
         return nearest
+    
+    def plan_route_by_gps(
+        self,
+        start_lat: float, start_lon: float,
+        end_lat: float, end_lon: float,
+        ship_type: str,
+        departure_hour: int = 12,
+        max_paths: int = 3,
+    ) -> Dict:
+        """通过 GPS 坐标规划路径（自动 snap 到最近节点）
+        
+        Args:
+            start_lat: 起点纬度
+            start_lon: 起点经度
+            end_lat: 终点纬度
+            end_lon: 终点经度
+            ship_type: 船舶类型（如 '中型货船'、'大型油轮'）
+            departure_hour: 出发小时 (0-23)
+            max_paths: 最大路径数
+        
+        Returns:
+            导航决策结果，同 plan_route()
+        """
+        start_node = self.find_nearest_node(start_lat, start_lon)
+        end_node = self.find_nearest_node(end_lat, end_lon)
+        
+        if start_node is None or end_node is None:
+            raise ValueError(
+                f"无法将 GPS 坐标映射到拓扑节点: "
+                f"start({start_lat}, {start_lon}) -> {start_node}, "
+                f"end({end_lat}, {end_lon}) -> {end_node}"
+            )
+        
+        departure_time = datetime.now().replace(hour=departure_hour, minute=0, second=0, microsecond=0)
+        
+        return self.plan_route(
+            start=start_node,
+            end=end_node,
+            ship_type=ship_type,
+            departure_time=departure_time,
+            max_paths=max_paths,
+        )
 
 
 # ==================== 主程序 ====================

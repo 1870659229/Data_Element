@@ -63,6 +63,7 @@ graph_degrees = {}
 main_component = set()
 edge_waypoints = {}
 edge_features = {}
+ship_db = {}  # 船舶特征数据库（按船名索引）
 
 # 全局规划器（惰性初始化）
 _navigator = None
@@ -209,6 +210,25 @@ def load_data():
         print("未找到 edge_waypoints.csv，路由将使用直线连接")
 
     print(f"数据加载完成: {len(nodes_data)} 个节点, {len(graph_edges)} 条边, {len(edge_features)} 条边特征")
+
+    # 加载船舶特征数据库
+    ship_db_path = os.path.join(OUTPUT_DIR, 'ship_characteristics_db.csv')
+    if os.path.exists(ship_db_path):
+        _ship_df = pd.read_csv(ship_db_path)
+        for _, row in _ship_df.iterrows():
+            ship_db[row['ship_name']] = {
+                'ship_name': row['ship_name'],
+                'ship_type': row.get('ship_type', '货船'),
+                'length': row.get('length'),
+                'width': row.get('width'),
+                'draft': row.get('draft'),
+                'height': row.get('height'),
+                'tonnage': row.get('tonnage'),
+                'max_speed': row.get('max_speed'),
+                'mmsi': row.get('mmsi', ''),
+                'data_source': row.get('data_source', ''),
+            }
+        print(f"船舶特征数据库加载完成: {len(ship_db)} 艘")
 
 
 def _init_navigator():
@@ -688,17 +708,19 @@ def _compute_graph_topology():
     main_component = components[0] if components else set()
 
 
+# 船舶类型模板（基于 shipxy/CCS 309 艘真实数据按船型中位数聚合，2026-06-10 更新）
+# height/tonnage 无真实源，保留合理推断值
 SHIP_TEMPLATES = {
-    '小型货船': {'length': 80, 'width': 12, 'draft': 4.5, 'height': 15, 'tonnage': 3000, 'max_speed': 12},
-    '中型货船': {'length': 150, 'width': 22, 'draft': 7.5, 'height': 25, 'tonnage': 15000, 'max_speed': 14},
-    '大型货船': {'length': 250, 'width': 32, 'draft': 11.0, 'height': 30, 'tonnage': 50000, 'max_speed': 15},
-    '集装箱船': {'length': 200, 'width': 30, 'draft': 10.0, 'height': 40, 'tonnage': 35000, 'max_speed': 18},
-    '大型集装箱船': {'length': 350, 'width': 45, 'draft': 14.0, 'height': 50, 'tonnage': 100000, 'max_speed': 22},
-    '油轮': {'length': 180, 'width': 28, 'draft': 9.0, 'height': 20, 'tonnage': 25000, 'max_speed': 14},
-    '大型油轮': {'length': 300, 'width': 50, 'draft': 15.0, 'height': 25, 'tonnage': 120000, 'max_speed': 15},
-    '客船': {'length': 100, 'width': 18, 'draft': 5.0, 'height': 30, 'tonnage': 8000, 'max_speed': 20},
-    '渔船': {'length': 30, 'width': 6, 'draft': 2.5, 'height': 8, 'tonnage': 200, 'max_speed': 10},
-    '拖船': {'length': 25, 'width': 8, 'draft': 3.0, 'height': 10, 'tonnage': 300, 'max_speed': 12},
+    '小型货船': {'length': 50, 'width': 10, 'draft': 2.5, 'height': 10, 'tonnage': 1500, 'max_speed': 8},
+    '中型货船': {'length': 63, 'width': 13, 'draft': 3.2, 'height': 15, 'tonnage': 3000, 'max_speed': 8},
+    '大型货船': {'length': 120, 'width': 20, 'draft': 6.0, 'height': 20, 'tonnage': 15000, 'max_speed': 12},
+    '集装箱船': {'length': 50, 'width': 14, 'draft': 2.4, 'height': 20, 'tonnage': 3000, 'max_speed': 9},
+    '大型集装箱船': {'length': 200, 'width': 30, 'draft': 8.0, 'height': 35, 'tonnage': 35000, 'max_speed': 16},
+    '油轮': {'length': 68, 'width': 13, 'draft': 3.3, 'height': 12, 'tonnage': 2000, 'max_speed': 10},
+    '大型油轮': {'length': 200, 'width': 32, 'draft': 10.0, 'height': 18, 'tonnage': 50000, 'max_speed': 13},
+    '客船': {'length': 43, 'width': 10, 'draft': 2.0, 'height': 15, 'tonnage': 733, 'max_speed': 9},
+    '渔船': {'length': 17, 'width': 4, 'draft': 1.5, 'height': 5, 'tonnage': 200, 'max_speed': 6},
+    '拖船': {'length': 31, 'width': 10, 'draft': 2.2, 'height': 8, 'tonnage': 300, 'max_speed': 8},
 }
 
 
@@ -762,21 +784,34 @@ def calculate_edge_cost(u, v, ship, cost_type='distance'):
     return 1.0
 
 
-def plan_paths(start_node, end_node, ship_type='中型货船', max_paths=3):
+def plan_paths(start_node, end_node, ship_type='中型货船', ship_name=None, max_paths=3):
     from datetime import datetime as _dt
     _init_navigator()
 
-    ship_tpl = SHIP_TEMPLATES.get(ship_type, SHIP_TEMPLATES['中型货船'])
-    ship = ShipCharacteristics(
-        ship_name=f'模板_{ship_type}',
-        ship_type=ship_type,
-        length=ship_tpl['length'],
-        width=ship_tpl['width'],
-        draft=ship_tpl['draft'],
-        height=ship_tpl['height'],
-        tonnage=ship_tpl['tonnage'],
-        max_speed=ship_tpl['max_speed'],
-    )
+    # 优先从真实数据库查参数
+    if ship_name and ship_name in ship_db:
+        real = ship_db[ship_name]
+        ship = ShipCharacteristics(
+            ship_name=ship_name,
+            ship_type=real.get('ship_type', ship_type),
+            length=real.get('length') or SHIP_TEMPLATES.get(ship_type, {}).get('length', 100),
+            width=real.get('width') or SHIP_TEMPLATES.get(ship_type, {}).get('width', 15),
+            draft=real.get('draft') or SHIP_TEMPLATES.get(ship_type, {}).get('draft', 5),
+            height=real.get('height') or SHIP_TEMPLATES.get(ship_type, {}).get('height', 20),
+            tonnage=real.get('tonnage') or SHIP_TEMPLATES.get(ship_type, {}).get('tonnage', 5000),
+            max_speed=real.get('max_speed') or SHIP_TEMPLATES.get(ship_type, {}).get('max_speed', 15),
+        )
+        ship_tpl = {
+            'length': ship.length, 'width': ship.width, 'draft': ship.draft,
+            'height': ship.height, 'tonnage': ship.tonnage, 'max_speed': ship.max_speed,
+        }
+    else:
+        ship_tpl = SHIP_TEMPLATES.get(ship_type, SHIP_TEMPLATES['中型货船'])
+        ship = ShipCharacteristics(
+            ship_name=f'模板_{ship_type}' if not ship_name else ship_name,
+            ship_type=ship_type,
+            **ship_tpl
+        )
 
     # 使用多目标导航器进行路径规划
     result_paths = _navigator.find_paths(
@@ -828,8 +863,9 @@ def plan_paths(start_node, end_node, ship_type='中型货船', max_paths=3):
         'timestamp': str(_dt.now()),
         'departure_time': str(_dt.now()),
         'ship': {
-            'name': f'模板_{ship_type}',
+            'name': ship_name if ship_name else f'模板_{ship_type}',
             'type': ship_type,
+            'data_source': ship_db.get(ship_name, {}).get('data_source', 'template') if ship_name else 'template',
             **ship_tpl,
         },
         'start_node': start_node,
@@ -952,6 +988,32 @@ def get_ship_types():
     return jsonify({'success': True, 'data': types})
 
 
+@app.route('/api/ships', methods=['GET'])
+def get_ships():
+    """返回船舶列表，支持按船型过滤和关键词搜索"""
+    ship_type_filter = request.args.get('ship_type', '')
+    keyword = request.args.get('keyword', '')
+
+    results = []
+    for name, data in ship_db.items():
+        if ship_type_filter and data['ship_type'] != ship_type_filter:
+            continue
+        if keyword and keyword.lower() not in name.lower():
+            continue
+        results.append({
+            'ship_name': name,
+            'ship_type': data['ship_type'],
+            'length': data.get('length'),
+            'width': data.get('width'),
+            'draft': data.get('draft'),
+            'tonnage': data.get('tonnage'),
+            'data_source': data.get('data_source', ''),
+        })
+
+    results.sort(key=lambda x: (x['ship_type'], x['ship_name']))
+    return jsonify({'success': True, 'data': results, 'total': len(results)})
+
+
 @app.route('/api/topology_nodes', methods=['GET'])
 def get_topology_nodes():
     nodes_list = []
@@ -1016,6 +1078,11 @@ def plan_route():
     end_lat = data.get('end_lat')
     end_lon = data.get('end_lon')
     ship_type = data.get('ship_type', '中型货船')
+    ship_name = data.get('ship_name', '')
+
+    # 如果有 ship_name，从 DB 查真实 ship_type
+    if ship_name and ship_name in ship_db:
+        ship_type = ship_db[ship_name].get('ship_type', ship_type)
 
     if None in [start_lat, start_lon, end_lat, end_lon]:
         return jsonify({'success': False, 'message': '请提供完整的起终点GPS坐标'}), 400
@@ -1076,7 +1143,7 @@ def plan_route():
         if end_freq < 10:
             warnings_list.append(f'终点匹配的航道节点通航频次较低({end_freq}次)，匹配精度有限')
 
-        result = plan_paths(start_node, end_node, ship_type, max_paths=3)
+        result = plan_paths(start_node, end_node, ship_type, ship_name=ship_name, max_paths=3)
 
         if not result.get('success'):
             base_msg = result.get('message', '路径规划失败')

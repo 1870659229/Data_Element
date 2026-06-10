@@ -787,12 +787,26 @@ body {
     </div>
 
     <div>
-      <div class="section-label"><span class="dot ship"></span>船舶类型</div>
-      <div class="select-wrapper">
-        <select id="ship-type">
-          <option value="">加载中...</option>
+      <div class="section-label"><span class="dot ship"></span>船舶选择</div>
+      <div class="select-wrapper" style="margin-bottom:6px;">
+        <select id="ship-type-filter" onchange="filterShips()">
+          <option value="">全部船型</option>
         </select>
       </div>
+      <div style="position:relative;">
+        <input type="text" id="ship-search" placeholder="搜索船名..." oninput="filterShips()"
+          style="width:100%;padding:8px 12px;background:var(--bg-card);border:1px solid var(--border-light);
+          border-radius:var(--radius-sm);color:var(--text-primary);font-size:13px;outline:none;">
+        <div id="ship-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;
+          max-height:200px;overflow-y:auto;background:var(--bg-elevated);border:1px solid var(--border-light);
+          border-radius:0 0 var(--radius-sm) var(--radius-sm);z-index:1000;">
+        </div>
+      </div>
+      <div id="selected-ship-info" style="display:none;margin-top:6px;padding:6px 10px;
+        background:var(--bg-card);border-radius:var(--radius-sm);font-size:11px;color:var(--text-secondary);">
+      </div>
+      <!-- 隐藏的 ship-type select，兼容后端 -->
+      <select id="ship-type" style="display:none;"><option value="中型货船">中型货船</option></select>
     </div>
 
     <button class="btn-plan" id="btn-plan" onclick="doPlan()">
@@ -1080,7 +1094,11 @@ function setPickMode(mode) {
   }
 }
 
+let allShips = [];
+let selectedShipName = '';
+
 function loadShipTypes() {
+  // 加载船型列表到隐藏 select
   fetch('/api/ship_types')
     .then(r => r.json())
     .then(data => {
@@ -1098,6 +1116,67 @@ function loadShipTypes() {
     .catch(() => {
       document.getElementById('ship-type').innerHTML = '<option>中型货船</option><option>大型货船</option><option>小型货船</option>';
     });
+  // 加载船舶数据库
+  loadShips();
+}
+
+function loadShips() {
+  fetch('/api/ships')
+    .then(r => r.json())
+    .then(data => {
+      if (data.success && data.data) {
+        allShips = data.data;
+        const types = [...new Set(allShips.map(s => s.ship_type))].sort();
+        const sel = document.getElementById('ship-type-filter');
+        sel.innerHTML = '<option value="">全部船型</option>';
+        types.forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t; opt.textContent = t;
+          sel.appendChild(opt);
+        });
+      }
+    });
+}
+
+function filterShips() {
+  const typeFilter = document.getElementById('ship-type-filter').value;
+  const keyword = document.getElementById('ship-search').value.trim().toLowerCase();
+  const dropdown = document.getElementById('ship-dropdown');
+
+  let filtered = allShips;
+  if (typeFilter) filtered = filtered.filter(s => s.ship_type === typeFilter);
+  if (keyword) filtered = filtered.filter(s => s.ship_name.toLowerCase().includes(keyword));
+
+  dropdown.innerHTML = '';
+  filtered.slice(0, 50).forEach(s => {
+    const item = document.createElement('div');
+    item.style.cssText = 'padding:6px 12px;cursor:pointer;font-size:12px;color:var(--text-primary);border-bottom:1px solid var(--border-subtle);';
+    item.innerHTML = '<span style="color:var(--accent-primary);">' + s.ship_name + '</span> <span style="color:var(--text-muted);font-size:10px;">' + s.ship_type + ' | ' + (s.length||'?') + 'm × ' + (s.width||'?') + 'm | draft:' + (s.draft||'?') + '</span>';
+    item.onmouseover = function() { item.style.background = 'var(--bg-card)'; };
+    item.onmouseout = function() { item.style.background = 'transparent'; };
+    item.onclick = function() { selectShip(s); };
+    dropdown.appendChild(item);
+  });
+
+  if (filtered.length > 50) {
+    const more = document.createElement('div');
+    more.style.cssText = 'padding:6px 12px;font-size:11px;color:var(--text-muted);text-align:center;';
+    more.textContent = '还有 ' + (filtered.length - 50) + ' 艘...';
+    dropdown.appendChild(more);
+  }
+
+  dropdown.style.display = filtered.length > 0 ? 'block' : 'none';
+}
+
+function selectShip(ship) {
+  selectedShipName = ship.ship_name;
+  document.getElementById('ship-search').value = ship.ship_name;
+  document.getElementById('ship-dropdown').style.display = 'none';
+  document.getElementById('ship-type').value = ship.ship_type;
+
+  const info = document.getElementById('selected-ship-info');
+  info.style.display = 'block';
+  info.innerHTML = '<b>' + ship.ship_name + '</b> (' + ship.ship_type + ') | 长' + (ship.length||'?') + 'm 宽' + (ship.width||'?') + 'm 吃水' + (ship.draft||'?') + 'm | 来源:' + (ship.data_source||'?');
 }
 
 function loadTopoNodes() {
@@ -1201,7 +1280,8 @@ function doPlan() {
     body: JSON.stringify({
       start_lat: slat, start_lon: slon,
       end_lat: elat, end_lon: elon,
-      ship_type: shipType
+      ship_type: shipType,
+      ship_name: selectedShipName || ''
     })
   })
   .then(r => r.json())
@@ -1391,6 +1471,14 @@ window.addEventListener('DOMContentLoaded', () => {
   initMap();
   loadShipTypes();
   loadTopoNodes();
+  // 点击外部关闭船名下拉
+  document.addEventListener('click', function(e) {
+    var dropdown = document.getElementById('ship-dropdown');
+    var search = document.getElementById('ship-search');
+    if (dropdown && search && !dropdown.contains(e.target) && e.target !== search) {
+      dropdown.style.display = 'none';
+    }
+  });
 });
 
 // ===== 轨迹回放 =====
