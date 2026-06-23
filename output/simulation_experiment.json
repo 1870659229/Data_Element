@@ -1,0 +1,594 @@
+{
+  "results": [
+    {
+      "od_pair": 0,
+      "src": 144,
+      "tgt": 321,
+      "baseline": {
+        "fuel_tons": 16.5556,
+        "distance_km": 200.58,
+        "time_hours": 21.67,
+        "hops": 69
+      },
+      "smart": {
+        "fuel_tons": 16.3894,
+        "distance_km": 198.4,
+        "time_hours": 21.45,
+        "hops": 75
+      },
+      "fuel_saving_pct": 1.0,
+      "time_saving_pct": 1.03
+    },
+    {
+      "od_pair": 1,
+      "src": 243,
+      "tgt": 30,
+      "baseline": {
+        "fuel_tons": 0.7766,
+        "distance_km": 8.76,
+        "time_hours": 1.28,
+        "hops": 11
+      },
+      "smart": {
+        "fuel_tons": 0.7522,
+        "distance_km": 8.15,
+        "time_hours": 1.19,
+        "hops": 13
+      },
+      "fuel_saving_pct": 3.14,
+      "time_saving_pct": 7.03
+    },
+    {
+      "od_pair": 2,
+      "src": 266,
+      "tgt": 3,
+      "baseline": {
+        "fuel_tons": 5.8918,
+        "distance_km": 75.26,
+        "time_hours": 9.12,
+        "hops": 8
+      },
+      "smart": {
+        "fuel_tons": 5.8918,
+        "distance_km": 75.26,
+        "time_hours": 9.12,
+        "hops": 8
+      },
+      "fuel_saving_pct": 0.0,
+      "time_saving_pct": 0.0
+    },
+    {
+      "od_pair": 3,
+      "src": 24,
+      "tgt": 204,
+      "baseline": {
+        "fuel_tons": 10.7013,
+        "distance_km": 134.84,
+        "time_hours": 15.65,
+        "hops": 36
+      },
+      "smart": {
+        "fuel_tons": 10.6401,
+        "distance_km": 133.9,
+        "time_hours": 15.56,
+        "hops": 38
+      },
+      "fuel_saving_pct": 0.57,
+      "time_saving_pct": 0.59
+    },
+    {
+      "od_pair": 4,
+      "src": 196,
+      "tgt": 163,
+      "baseline": {
+        "fuel_tons": 5.142,
+        "distance_km": 65.04,
+        "time_hours": 7.7,
+        "hops": 5
+      },
+      "smart": {
+        "fuel_tons": 5.142,
+        "distance_km": 65.04,
+        "time_hours": 7.7,
+        "hops": 5
+      },
+      "fuel_saving_pct": 0.0,
+      "time_saving_pct": 0.0
+    },
+    {
+      "od_pair": 5,
+      "src": 175,
+      "tgt": 196,
+      "baseline": {
+        "fuel_tons": 8.6735,
+        "distance_km": 108.29,
+        "time_hours": 13.13,
+        "hops": 23
+      },
+      "smart": {
+        "fuel_tons": 6.4803,
+        "distance_km": 66.03,
+        "time_hours": 6.99,
+        "hops": 32
+      },
+      "fuel_saving_pct": 25.29,
+      "time_saving_pct": 46.79
+    },
+    {
+      "od_pair": 6,
+      "src": 157,
+      "tgt": 1104,
+      "baseline": {
+        "fuel_tons": 8.2451,
+        "distance_km": 63.81,
+        "time_hours": 7.61,
+        "hops": 29
+      },
+      "smart": {
+        "fuel_tons": 7.4756,
+        "distance_km": 45.56,
+        "time_hours": 4.88,
+        "hops": 54
+      },
+      "fuel_saving_pct": 9.33,
+      "time_saving_pct": 35.93
+    },
+    {
+      "od_pair": 7,
+      "src": 1064,
+      "tgt": 458,
+      "baseline": {
+        "fuel_tons": 9.334,
+        "distance_km": 102.13,
+        "time_hours": 11.72,
+        "hops": 39
+      },
+      "smart": {
+        "fuel_tons": 9.9883,
+        "distance_km": 100.64,
+        "time_hours": 11.53,
+        "hops": 44
+      },
+      "fuel_saving_pct": -7.01,
+      "time_saving_pct": 1.66
+    },
+    {
+      "od_pair": 8,
+      "src": 549,
+      "tgt": 210,
+      "baseline": {
+        "fuel_tons": 7.8013,
+        "distance_km": 101.61,
+        "time_hours": 12.42,
+        "hops": 12
+      },
+      "smart": {
+        "fuel_tons": 7.8013,
+        "distance_km": 101.61,
+        "time_hours": 12.42,
+        "hops": 12
+      },
+      "fuel_saving_pct": 0.0,
+      "time_saving_pct": 0.0
+    },
+    {
+      "od_pair": 9,
+      "src": 210,
+      "tgt": 234,
+      "baseline": {
+        "fuel_tons": 11.1303,
+        "distance_km": 128.22,
+        "time_hours": 15.32,
+        "hops": 30
+      },
+      "smart": {
+        "fuel_tons": 11.0519,
+        "distance_km": 126.63,
+        "time_hours": 15.18,
+        "hops": 34
+      },
+      "fuel_saving_pct": 0.7,
+      "time_saving_pct": 0.94
+    },
+    {
+      "od_pair": 10,
+      "src": 80,
+      "tgt": 60,
+      "baseline": {
+        "fuel_tons": 13.241,
+        "distance_km": 103.34,
+        "time_hours": 12.02,
+        "hops": 44
+      },
+      "smart": {
+        "fuel_tons": 13.2329,
+        "distance_km": 102.95,
+        "time_hours": 11.98,
+        "hops": 45
+      },
+      "fuel_saving_pct": 0.06,
+      "time_saving_pct": 0.39
+    },
+    {
+      "od_pair": 11,
+      "src": 155,
+      "tgt": 1205,
+      "baseline": {
+        "fuel_tons": 3.0335,
+        "distance_km": 25.28,
+        "time_hours": 2.96,
+        "hops": 29
+      },
+      "smart": {
+        "fuel_tons": 2.6165,
+        "distance_km": 20.64,
+        "time_hours": 2.47,
+        "hops": 36
+      },
+      "fuel_saving_pct": 13.75,
+      "time_saving_pct": 16.63
+    },
+    {
+      "od_pair": 12,
+      "src": 125,
+      "tgt": 135,
+      "baseline": {
+        "fuel_tons": 27.6902,
+        "distance_km": 331.7,
+        "time_hours": 37.42,
+        "hops": 106
+      },
+      "smart": {
+        "fuel_tons": 26.9481,
+        "distance_km": 323.02,
+        "time_hours": 36.22,
+        "hops": 117
+      },
+      "fuel_saving_pct": 2.68,
+      "time_saving_pct": 3.2
+    },
+    {
+      "od_pair": 13,
+      "src": 722,
+      "tgt": 407,
+      "baseline": {
+        "fuel_tons": 5.4598,
+        "distance_km": 69.03,
+        "time_hours": 8.44,
+        "hops": 15
+      },
+      "smart": {
+        "fuel_tons": 5.4598,
+        "distance_km": 69.03,
+        "time_hours": 8.44,
+        "hops": 15
+      },
+      "fuel_saving_pct": 0.0,
+      "time_saving_pct": 0.0
+    },
+    {
+      "od_pair": 14,
+      "src": 319,
+      "tgt": 7,
+      "baseline": {
+        "fuel_tons": 7.5464,
+        "distance_km": 53.7,
+        "time_hours": 6.51,
+        "hops": 34
+      },
+      "smart": {
+        "fuel_tons": 7.0954,
+        "distance_km": 47.19,
+        "time_hours": 5.8,
+        "hops": 39
+      },
+      "fuel_saving_pct": 5.98,
+      "time_saving_pct": 10.92
+    },
+    {
+      "od_pair": 15,
+      "src": 1194,
+      "tgt": 1071,
+      "baseline": {
+        "fuel_tons": 1.9406,
+        "distance_km": 20.97,
+        "time_hours": 2.69,
+        "hops": 21
+      },
+      "smart": {
+        "fuel_tons": 1.8877,
+        "distance_km": 20.15,
+        "time_hours": 2.59,
+        "hops": 23
+      },
+      "fuel_saving_pct": 2.72,
+      "time_saving_pct": 3.61
+    },
+    {
+      "od_pair": 16,
+      "src": 1038,
+      "tgt": 795,
+      "baseline": {
+        "fuel_tons": 10.1868,
+        "distance_km": 93.56,
+        "time_hours": 11.32,
+        "hops": 33
+      },
+      "smart": {
+        "fuel_tons": 10.3038,
+        "distance_km": 84.92,
+        "time_hours": 10.22,
+        "hops": 41
+      },
+      "fuel_saving_pct": -1.15,
+      "time_saving_pct": 9.65
+    },
+    {
+      "od_pair": 17,
+      "src": 23,
+      "tgt": 104,
+      "baseline": {
+        "fuel_tons": 0.6978,
+        "distance_km": 1.61,
+        "time_hours": 0.25,
+        "hops": 3
+      },
+      "smart": {
+        "fuel_tons": 0.6978,
+        "distance_km": 1.61,
+        "time_hours": 0.25,
+        "hops": 3
+      },
+      "fuel_saving_pct": 0.0,
+      "time_saving_pct": 0.0
+    },
+    {
+      "od_pair": 18,
+      "src": 172,
+      "tgt": 4,
+      "baseline": {
+        "fuel_tons": 5.3453,
+        "distance_km": 57.13,
+        "time_hours": 6.53,
+        "hops": 21
+      },
+      "smart": {
+        "fuel_tons": 5.3332,
+        "distance_km": 52.77,
+        "time_hours": 5.81,
+        "hops": 26
+      },
+      "fuel_saving_pct": 0.23,
+      "time_saving_pct": 11.08
+    },
+    {
+      "od_pair": 19,
+      "src": 177,
+      "tgt": 57,
+      "baseline": {
+        "fuel_tons": 20.7074,
+        "distance_km": 244.75,
+        "time_hours": 27.25,
+        "hops": 54
+      },
+      "smart": {
+        "fuel_tons": 20.4368,
+        "distance_km": 242.72,
+        "time_hours": 27.05,
+        "hops": 59
+      },
+      "fuel_saving_pct": 1.31,
+      "time_saving_pct": 0.74
+    },
+    {
+      "od_pair": 20,
+      "src": 436,
+      "tgt": 123,
+      "baseline": {
+        "fuel_tons": 25.8753,
+        "distance_km": 308.88,
+        "time_hours": 34.42,
+        "hops": 98
+      },
+      "smart": {
+        "fuel_tons": 25.4366,
+        "distance_km": 298.77,
+        "time_hours": 33.07,
+        "hops": 113
+      },
+      "fuel_saving_pct": 1.7,
+      "time_saving_pct": 3.91
+    },
+    {
+      "od_pair": 21,
+      "src": 94,
+      "tgt": 123,
+      "baseline": {
+        "fuel_tons": 3.1063,
+        "distance_km": 37.17,
+        "time_hours": 4.65,
+        "hops": 3
+      },
+      "smart": {
+        "fuel_tons": 3.1063,
+        "distance_km": 37.17,
+        "time_hours": 4.65,
+        "hops": 3
+      },
+      "fuel_saving_pct": 0.0,
+      "time_saving_pct": 0.0
+    },
+    {
+      "od_pair": 22,
+      "src": 1141,
+      "tgt": 75,
+      "baseline": {
+        "fuel_tons": 4.5373,
+        "distance_km": 52.68,
+        "time_hours": 6.35,
+        "hops": 14
+      },
+      "smart": {
+        "fuel_tons": 5.2916,
+        "distance_km": 50.23,
+        "time_hours": 6.01,
+        "hops": 36
+      },
+      "fuel_saving_pct": -16.63,
+      "time_saving_pct": 5.28
+    },
+    {
+      "od_pair": 23,
+      "src": 82,
+      "tgt": 125,
+      "baseline": {
+        "fuel_tons": 1.2356,
+        "distance_km": 13.71,
+        "time_hours": 1.85,
+        "hops": 3
+      },
+      "smart": {
+        "fuel_tons": 1.2356,
+        "distance_km": 13.71,
+        "time_hours": 1.85,
+        "hops": 3
+      },
+      "fuel_saving_pct": 0.0,
+      "time_saving_pct": 0.0
+    },
+    {
+      "od_pair": 24,
+      "src": 1062,
+      "tgt": 221,
+      "baseline": {
+        "fuel_tons": 7.4629,
+        "distance_km": 81.92,
+        "time_hours": 9.19,
+        "hops": 21
+      },
+      "smart": {
+        "fuel_tons": 7.462,
+        "distance_km": 81.54,
+        "time_hours": 9.14,
+        "hops": 22
+      },
+      "fuel_saving_pct": 0.01,
+      "time_saving_pct": 0.54
+    },
+    {
+      "od_pair": 25,
+      "src": 1071,
+      "tgt": 114,
+      "baseline": {
+        "fuel_tons": 21.5002,
+        "distance_km": 247.73,
+        "time_hours": 26.74,
+        "hops": 92
+      },
+      "smart": {
+        "fuel_tons": 21.3497,
+        "distance_km": 244.92,
+        "time_hours": 26.4,
+        "hops": 100
+      },
+      "fuel_saving_pct": 0.7,
+      "time_saving_pct": 1.28
+    },
+    {
+      "od_pair": 26,
+      "src": 1002,
+      "tgt": 351,
+      "baseline": {
+        "fuel_tons": 8.7881,
+        "distance_km": 94.72,
+        "time_hours": 10.77,
+        "hops": 28
+      },
+      "smart": {
+        "fuel_tons": 8.807,
+        "distance_km": 94.35,
+        "time_hours": 10.75,
+        "hops": 29
+      },
+      "fuel_saving_pct": -0.22,
+      "time_saving_pct": 0.17
+    },
+    {
+      "od_pair": 27,
+      "src": 1239,
+      "tgt": 784,
+      "baseline": {
+        "fuel_tons": 3.7467,
+        "distance_km": 25.44,
+        "time_hours": 3.16,
+        "hops": 18
+      },
+      "smart": {
+        "fuel_tons": 3.7267,
+        "distance_km": 25.12,
+        "time_hours": 3.12,
+        "hops": 19
+      },
+      "fuel_saving_pct": 0.53,
+      "time_saving_pct": 1.1
+    },
+    {
+      "od_pair": 28,
+      "src": 696,
+      "tgt": 61,
+      "baseline": {
+        "fuel_tons": 7.365,
+        "distance_km": 68.78,
+        "time_hours": 8.1,
+        "hops": 28
+      },
+      "smart": {
+        "fuel_tons": 6.873,
+        "distance_km": 62.91,
+        "time_hours": 7.42,
+        "hops": 31
+      },
+      "fuel_saving_pct": 6.68,
+      "time_saving_pct": 8.38
+    },
+    {
+      "od_pair": 29,
+      "src": 437,
+      "tgt": 125,
+      "baseline": {
+        "fuel_tons": 8.7882,
+        "distance_km": 111.8,
+        "time_hours": 13.3,
+        "hops": 33
+      },
+      "smart": {
+        "fuel_tons": 9.0075,
+        "distance_km": 101.91,
+        "time_hours": 12.34,
+        "hops": 51
+      },
+      "fuel_saving_pct": -2.5,
+      "time_saving_pct": 7.23
+    }
+  ],
+  "summary": {
+    "n_pairs": 30,
+    "ship_type": "medium_cargo",
+    "departure_hour": 8,
+    "fuel_saving_mean": 1.63,
+    "fuel_saving_median": 0.38,
+    "fuel_saving_std": 6.54,
+    "fuel_saving_min": -16.63,
+    "fuel_saving_max": 25.29,
+    "time_saving_mean": 5.94,
+    "time_saving_median": 1.19,
+    "routes_differ_count": 23,
+    "annual_projection": {
+      "voyages_per_year": 120,
+      "scale_factor": 50,
+      "avg_fuel_saving_pct": 1.63,
+      "annual_fuel_saving_tons": 887.8,
+      "annual_cost_saving_cny": 4216055.0
+    }
+  }
+}

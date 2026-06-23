@@ -1,0 +1,38 @@
+{
+  "wcc_analysis": {
+    "total_nodes": 416,
+    "total_edges": 506,
+    "num_wcc": 2,
+    "largest_wcc_nodes": 414,
+    "largest_wcc_pct": 99.5,
+    "largest_wcc_edges": 505,
+    "edge_coverage_pct": 99.8,
+    "top5_wcc_sizes": [
+      414,
+      2
+    ]
+  },
+  "scalability_prediction": {
+    "multipliers": [
+      1.0,
+      1.5,
+      2.0,
+      2.5,
+      3.0
+    ],
+    "predicted_largest_pct": [
+      99.5,
+      99.9,
+      99.9,
+      99.9,
+      99.9
+    ],
+    "predicted_components": [
+      2,
+      1,
+      1,
+      1,
+      1
+    ]
+  }
+}

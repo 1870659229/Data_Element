@@ -4,68 +4,68 @@
   "samples": [
     {
       "index": 0,
-      "ship_type": "拖船",
+      "ship_type": "巨型油轮(custom)",
       "start": 964,
       "end": 259,
       "hour": 18,
       "success": true,
-      "path_type": "通航频次最高",
+      "path_type": "约束放宽路径",
       "distance_km": 168.08,
-      "time_min": 1273.5,
-      "risk_score": 34.66,
-      "constraints_met": true
+      "time_min": 1274.63,
+      "risk_score": 55.85,
+      "constraints_met": false
     },
     {
       "index": 1,
-      "ship_type": "小型货船",
+      "ship_type": "巨型油轮(custom)",
       "start": 964,
       "end": 784,
       "hour": 17,
       "success": true,
-      "path_type": "通航频次最高",
-      "distance_km": 151.13,
-      "time_min": 1201.75,
-      "risk_score": 45.93,
-      "constraints_met": true
+      "path_type": "约束放宽路径",
+      "distance_km": 152.14,
+      "time_min": 1204.05,
+      "risk_score": 56.65,
+      "constraints_met": false
     },
     {
       "index": 2,
-      "ship_type": "集装箱船",
+      "ship_type": "巨型油轮(custom)",
       "start": 964,
       "end": 3,
       "hour": 3,
       "success": true,
       "path_type": "约束放宽路径",
       "distance_km": 141.65,
-      "time_min": 752.57,
-      "risk_score": 56.66,
+      "time_min": 753.36,
+      "risk_score": 56.18,
       "constraints_met": false
     },
     {
       "index": 3,
-      "ship_type": "油轮",
+      "ship_type": "巨型油轮(custom)",
       "start": 964,
       "end": 3,
       "hour": 9,
       "success": true,
       "path_type": "约束放宽路径",
       "distance_km": 141.65,
-      "time_min": 1128.86,
-      "risk_score": 52.38,
+      "time_min": 1130.04,
+      "risk_score": 56.18,
       "constraints_met": false
     },
     {
       "index": 4,
-      "ship_type": "小型货船",
+      "ship_type": "巨型油轮(custom)",
       "start": 964,
       "end": 155,
       "hour": 5,
       "success": true,
-      "path_type": "通航频次最高",
-      "distance_km": 170.59,
-      "time_min": 984.16,
-      "risk_score": 43.92,
-      "constraints_met": true
+      "path_type": "约束放宽路径",
+      "distance_km": 171.26,
+      "time_min": 1003.36,
+      "risk_score": 56.15,
+      "constraints_met": false
     },
     {
       "index": 5,
@@ -74,11 +74,11 @@
       "end": 193,
       "hour": 14,
       "success": true,
-      "path_type": "约束放宽路径",
-      "distance_km": 23.9,
-      "time_min": 155.5,
-      "risk_score": 51.2,
-      "constraints_met": false
+      "path_type": "距离最短",
+      "distance_km": 22.96,
+      "time_min": 150.82,
+      "risk_score": 43.73,
+      "constraints_met": true
     },
     {
       "index": 6,
@@ -87,11 +87,11 @@
       "end": 54,
       "hour": 8,
       "success": true,
-      "path_type": "约束放宽路径",
-      "distance_km": 148.53,
-      "time_min": 1225.58,
-      "risk_score": 56.69,
-      "constraints_met": false
+      "path_type": "时间最短",
+      "distance_km": 199.06,
+      "time_min": 1590.26,
+      "risk_score": 48.54,
+      "constraints_met": true
     },
     {
       "index": 7,
@@ -100,11 +100,11 @@
       "end": 784,
       "hour": 11,
       "success": true,
-      "path_type": "约束放宽路径",
-      "distance_km": 152.14,
-      "time_min": 1052.46,
-      "risk_score": 66.44,
-      "constraints_met": false
+      "path_type": "综合最优",
+      "distance_km": 144.99,
+      "time_min": 1005.93,
+      "risk_score": 50.14,
+      "constraints_met": true
     },
     {
       "index": 8,
@@ -113,10 +113,10 @@
       "end": 3,
       "hour": 9,
       "success": true,
-      "path_type": "通航频次最高",
-      "distance_km": 141.65,
-      "time_min": 1128.86,
-      "risk_score": 36.74,
+      "path_type": "时间最短",
+      "distance_km": 201.08,
+      "time_min": 1535.54,
+      "risk_score": 42.98,
       "constraints_met": true
     },
     {
@@ -126,10 +126,10 @@
       "end": 220,
       "hour": 10,
       "success": true,
-      "path_type": "通航频次最高",
-      "distance_km": 128.38,
-      "time_min": 933.03,
-      "risk_score": 34.59,
+      "path_type": "距离最短",
+      "distance_km": 127.44,
+      "time_min": 928.13,
+      "risk_score": 43.26,
       "constraints_met": true
     },
     {
@@ -139,11 +139,11 @@
       "end": 137,
       "hour": 2,
       "success": true,
-      "path_type": "约束放宽路径",
-      "distance_km": 160.87,
-      "time_min": 826.28,
-      "risk_score": 66.07,
-      "constraints_met": false
+      "path_type": "距离最短",
+      "distance_km": 159.93,
+      "time_min": 822.8,
+      "risk_score": 49.74,
+      "constraints_met": true
     },
     {
       "index": 11,
@@ -152,11 +152,11 @@
       "end": 33,
       "hour": 22,
       "success": true,
-      "path_type": "约束放宽路径",
-      "distance_km": 167.91,
-      "time_min": 939.65,
-      "risk_score": 57.67,
-      "constraints_met": false
+      "path_type": "距离最短",
+      "distance_km": 163.91,
+      "time_min": 921.86,
+      "risk_score": 48.72,
+      "constraints_met": true
     },
     {
       "index": 12,
@@ -165,10 +165,10 @@
       "end": 370,
       "hour": 13,
       "success": true,
-      "path_type": "通航频次最高",
-      "distance_km": 141.75,
-      "time_min": 960.16,
-      "risk_score": 50.71,
+      "path_type": "时间最短",
+      "distance_km": 200.89,
+      "time_min": 1305.68,
+      "risk_score": 44.41,
       "constraints_met": true
     },
     {
@@ -178,11 +178,11 @@
       "end": 101,
       "hour": 11,
       "success": true,
-      "path_type": "约束放宽路径",
-      "distance_km": 171.61,
-      "time_min": 1187.93,
-      "risk_score": 34.13,
-      "constraints_met": false
+      "path_type": "距离最短",
+      "distance_km": 169.51,
+      "time_min": 1177.23,
+      "risk_score": 43.17,
+      "constraints_met": true
     },
     {
       "index": 14,
@@ -191,10 +191,10 @@
       "end": 1062,
       "hour": 3,
       "success": true,
-      "path_type": "通航频次最高",
-      "distance_km": 168.09,
-      "time_min": 860.68,
-      "risk_score": 32.09,
+      "path_type": "时间最短",
+      "distance_km": 185.78,
+      "time_min": 972.9,
+      "risk_score": 43.87,
       "constraints_met": true
     },
     {
@@ -204,10 +204,10 @@
       "end": 249,
       "hour": 9,
       "success": true,
-      "path_type": "通航频次最高",
-      "distance_km": 64.87,
-      "time_min": 504.41,
-      "risk_score": 37.04,
+      "path_type": "综合最优",
+      "distance_km": 59.09,
+      "time_min": 459.58,
+      "risk_score": 50.08,
       "constraints_met": true
     },
     {
@@ -217,10 +217,10 @@
       "end": 248,
       "hour": 17,
       "success": true,
-      "path_type": "通航频次最高",
-      "distance_km": 38.74,
-      "time_min": 309.55,
-      "risk_score": 35.31,
+      "path_type": "距离最短",
+      "distance_km": 37.8,
+      "time_min": 304.2,
+      "risk_score": 44.51,
       "constraints_met": true
     },
     {
@@ -230,11 +230,11 @@
       "end": 123,
       "hour": 16,
       "success": true,
-      "path_type": "约束放宽路径",
-      "distance_km": 139.4,
-      "time_min": 1001.92,
-      "risk_score": 59.37,
-      "constraints_met": false
+      "path_type": "综合最优",
+      "distance_km": 138.54,
+      "time_min": 996.08,
+      "risk_score": 51.68,
+      "constraints_met": true
     },
     {
       "index": 18,
@@ -243,11 +243,11 @@
       "end": 57,
       "hour": 1,
       "success": true,
-      "path_type": "约束放宽路径",
-      "distance_km": 47.53,
-      "time_min": 248.84,
-      "risk_score": 33.47,
-      "constraints_met": false
+      "path_type": "综合最优",
+      "distance_km": 41.75,
+      "time_min": 218.95,
+      "risk_score": 52.99,
+      "constraints_met": true
     },
     {
       "index": 19,
@@ -256,10 +256,10 @@
       "end": 289,
       "hour": 9,
       "success": true,
-      "path_type": "通航频次最高",
-      "distance_km": 95.88,
-      "time_min": 763.01,
-      "risk_score": 50.69,
+      "path_type": "距离最短",
+      "distance_km": 94.94,
+      "time_min": 757.66,
+      "risk_score": 44.64,
       "constraints_met": true
     },
     {
@@ -272,7 +272,7 @@
       "path_type": "通航频次最高",
       "distance_km": 19.2,
       "time_min": 105.33,
-      "risk_score": 43.74,
+      "risk_score": 47.32,
       "constraints_met": true
     },
     {
@@ -282,11 +282,11 @@
       "end": 429,
       "hour": 12,
       "success": true,
-      "path_type": "约束放宽路径",
-      "distance_km": 169.21,
-      "time_min": 1084.3,
-      "risk_score": 55.48,
-      "constraints_met": false
+      "path_type": "时间最短",
+      "distance_km": 186.44,
+      "time_min": 1222.09,
+      "risk_score": 44.71,
+      "constraints_met": true
     },
     {
       "index": 22,
@@ -295,11 +295,11 @@
       "end": 375,
       "hour": 19,
       "success": true,
-      "path_type": "约束放宽路径",
-      "distance_km": 153.69,
-      "time_min": 1062.56,
-      "risk_score": 66.11,
-      "constraints_met": false
+      "path_type": "安全优先",
+      "distance_km": 178.68,
+      "time_min": 1242.77,
+      "risk_score": 51.59,
+      "constraints_met": true
     },
     {
       "index": 23,
@@ -308,10 +308,10 @@
       "end": 27,
       "hour": 13,
       "success": true,
-      "path_type": "通航频次最高",
-      "distance_km": 172.58,
-      "time_min": 1163.79,
-      "risk_score": 35.41,
+      "path_type": "距离最短",
+      "distance_km": 171.3,
+      "time_min": 1156.87,
+      "risk_score": 43.87,
       "constraints_met": true
     },
     {
@@ -321,11 +321,11 @@
       "end": 291,
       "hour": 8,
       "success": true,
-      "path_type": "约束放宽路径",
-      "distance_km": 213.3,
-      "time_min": 1716.84,
-      "risk_score": 33.33,
-      "constraints_met": false
+      "path_type": "综合最优",
+      "distance_km": 204.79,
+      "time_min": 1648.27,
+      "risk_score": 44.59,
+      "constraints_met": true
     },
     {
       "index": 25,
@@ -334,11 +334,11 @@
       "end": 1063,
       "hour": 11,
       "success": true,
-      "path_type": "约束放宽路径",
-      "distance_km": 61.37,
-      "time_min": 417.62,
-      "risk_score": 62.46,
-      "constraints_met": false
+      "path_type": "综合最优",
+      "distance_km": 60.92,
+      "time_min": 414.61,
+      "risk_score": 55.37,
+      "constraints_met": true
     },
     {
       "index": 26,
@@ -347,11 +347,11 @@
       "end": 639,
       "hour": 9,
       "success": true,
-      "path_type": "约束放宽路径",
-      "distance_km": 152.67,
-      "time_min": 1205.35,
-      "risk_score": 51.18,
-      "constraints_met": false
+      "path_type": "综合最优",
+      "distance_km": 145.53,
+      "time_min": 1152.17,
+      "risk_score": 45.87,
+      "constraints_met": true
     },
     {
       "index": 27,
@@ -360,11 +360,11 @@
       "end": 173,
       "hour": 5,
       "success": true,
-      "path_type": "约束放宽路径",
-      "distance_km": 114.59,
-      "time_min": 660.46,
-      "risk_score": 59.8,
-      "constraints_met": false
+      "path_type": "综合最优",
+      "distance_km": 113.74,
+      "time_min": 655.76,
+      "risk_score": 59.51,
+      "constraints_met": true
     },
     {
       "index": 28,
@@ -373,11 +373,11 @@
       "end": 228,
       "hour": 23,
       "success": true,
-      "path_type": "约束放宽路径",
-      "distance_km": 160.53,
-      "time_min": 871.41,
-      "risk_score": 55.16,
-      "constraints_met": false
+      "path_type": "时间最短",
+      "distance_km": 176.32,
+      "time_min": 981.98,
+      "risk_score": 44.77,
+      "constraints_met": true
     },
     {
       "index": 29,
@@ -386,10 +386,10 @@
       "end": 141,
       "hour": 18,
       "success": true,
-      "path_type": "通航频次最高",
-      "distance_km": 159.24,
-      "time_min": 1172.73,
-      "risk_score": 43.92,
+      "path_type": "时间最短",
+      "distance_km": 178.85,
+      "time_min": 1346.37,
+      "risk_score": 49.74,
       "constraints_met": true
     }
   ]
