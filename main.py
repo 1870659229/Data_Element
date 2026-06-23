@@ -304,8 +304,21 @@ class TaskManager:
 
         if load_model_path and os.path.exists(load_model_path):
             model.load_model(load_model_path, graph=self.cache.get('graph'))
-            self.cache['edge_features'] = model.predict_with_loaded_model(
-                self.cache['graph'], self.cache['cleaned_df'])
+            if model.best_model is None:
+                # pkl 损坏或 best_model 字段为 None（旧版保存格式），回退到训练
+                logger.warning("已保存模型 best_model 字段为 None，回退到重新训练")
+                model.gnn_n_epochs = gnn_n_epochs
+                model.gnn_patience = gnn_patience
+                self.cache['edge_features'] = model.build_weights_with_comparison(
+                    self.cache['graph'], self.cache['cleaned_df'])
+                try:
+                    model.save_model(self.output_dir)
+                except Exception as e:
+                    logger.error("模型保存失败: %s", e)
+                # build_weights_with_comparison 已填充 self.cache['edge_features']，跳过 predict
+            else:
+                self.cache['edge_features'] = model.predict_with_loaded_model(
+                    self.cache['graph'], self.cache['cleaned_df'])
         else:
             model.gnn_n_epochs = gnn_n_epochs
             model.gnn_patience = gnn_patience

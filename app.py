@@ -65,6 +65,45 @@ edge_waypoints = {}
 edge_features = {}
 ship_db = {}  # 船舶特征数据库（按船名索引）
 
+
+def _safe_float(val, fallback=None):
+    """安全的浮点数转换：NaN/None/空值 → fallback"""
+    import math
+    if val is None:
+        return fallback
+    try:
+        v = float(val)
+        if math.isnan(v) or math.isinf(v):
+            return fallback
+        return v
+    except (ValueError, TypeError):
+        return fallback
+
+
+def _normalize_ship_type(raw_type, length_m=None):
+    """将 CSV 中各种船型名称规范化为 SHIP_TEMPLATES 兼容名称。
+
+    规则（2026-06-17 改进）：
+      - '拖轮' → '拖船'（同义词）
+      - '货船' → 按船长细分为 小型/中型/大型 货船
+      - 其他类型保持不变（在 SHIP_TEMPLATES 中补充对应模板）
+    """
+    if not raw_type or not isinstance(raw_type, str):
+        return '中型货船'
+    t = raw_type.strip()
+    if t == '拖轮':
+        return '拖船'
+    if t == '货船':
+        L = _safe_float(length_m, 63)
+        if L < 55:
+            return '小型货船'
+        elif L < 100:
+            return '中型货船'
+        else:
+            return '大型货船'
+    return t
+
+
 # 全局规划器（惰性初始化）
 _navigator = None
 _constraint_checker = None
@@ -169,6 +208,9 @@ def load_data():
                 })
         for key in edge_waypoints:
             edge_waypoints[key].sort(key=lambda w: w['sequence'])
+        print(f"边航点加载完成: {len(edge_waypoints)} 条边, {sum(len(v) for v in edge_waypoints.values())} 个航点")
+    else:
+        print("未找到 edge_waypoints.csv，路由将使用直线连接")
 
     _filter_edges()
 
@@ -190,41 +232,27 @@ def load_data():
 
     _compute_graph_topology()
 
-    waypoints_path = os.path.join(OUTPUT_DIR, 'edge_waypoints.csv')
-    if os.path.exists(waypoints_path):
-        with open(waypoints_path, 'r', encoding='utf-8-sig') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                key = (int(row['from_node']), int(row['to_node']))
-                if key not in edge_waypoints:
-                    edge_waypoints[key] = []
-                edge_waypoints[key].append({
-                    'lat': float(row['lat']),
-                    'lon': float(row['lon']),
-                    'sequence': int(row['sequence'])
-                })
-        for key in edge_waypoints:
-            edge_waypoints[key].sort(key=lambda w: w['sequence'])
-        print(f"边航点加载完成: {len(edge_waypoints)} 条边")
-    else:
-        print("未找到 edge_waypoints.csv，路由将使用直线连接")
-
     print(f"数据加载完成: {len(nodes_data)} 个节点, {len(graph_edges)} 条边, {len(edge_features)} 条边特征")
 
-    # 加载船舶特征数据库
+    # 加载船舶特征数据库（2026-06-17 改进：NaN 安全 + 船型规范化）
     ship_db_path = os.path.join(OUTPUT_DIR, 'ship_characteristics_db.csv')
     if os.path.exists(ship_db_path):
         _ship_df = pd.read_csv(ship_db_path)
         for _, row in _ship_df.iterrows():
+            raw_length = _safe_float(row.get('length'))
+            raw_type = row.get('ship_type', '货船')
+            normalized_type = _normalize_ship_type(raw_type, raw_length)
+            tpl = SHIP_TEMPLATES.get(normalized_type, SHIP_TEMPLATES['中型货船'])
+
             ship_db[row['ship_name']] = {
                 'ship_name': row['ship_name'],
-                'ship_type': row.get('ship_type', '货船'),
-                'length': row.get('length'),
-                'width': row.get('width'),
-                'draft': row.get('draft'),
-                'height': row.get('height'),
-                'tonnage': row.get('tonnage'),
-                'max_speed': row.get('max_speed'),
+                'ship_type': normalized_type,
+                'length': _safe_float(raw_length, tpl['length']),
+                'width': _safe_float(row.get('width'), tpl['width']),
+                'draft': _safe_float(row.get('draft'), tpl['draft']),
+                'height': _safe_float(row.get('height'), tpl['height']),
+                'tonnage': _safe_float(row.get('tonnage'), tpl['tonnage']),
+                'max_speed': _safe_float(row.get('max_speed'), tpl['max_speed']),
                 'mmsi': row.get('mmsi', ''),
                 'data_source': row.get('data_source', ''),
             }
@@ -446,9 +474,17 @@ def _is_edge_near_waterway(u, v):
     if not _waterway_geoms:
         return True
 
-    # 沿边采样多个点，检查每个点是否靠近水系
+    # 修复（2026-06-15）：加载 waypoint 物理路径（只加载一次，两个检查共用）
+    # 沿 waypoint 全段采样，而不是沿 u-v 直线 —— 真实轨迹是绕着岛屿的折线，
+    # 直线穿岛不代表这条边不合法；桥接边两端各自在独立水系边，直线恰好落两水系之间。
+    edge_phys_path = None
+    if edge_waypoints and ((u, v) in edge_waypoints or (v, u) in edge_waypoints):
+        pts = edge_waypoints.get((u, v)) or edge_waypoints.get((v, u))
+        if pts and len(pts) >= 2:
+            edge_phys_path = [(p['lat'], p['lon']) for p in pts]
+
+    # ── Part 1: 水系线距离检查（沿 waypoint 路径采样）──
     dist_m = haversine_distance(n1['lat'], n1['lon'], n2['lat'], n2['lon'])
-    # 短边(<1km)只检查中点，使用宽松阈值
     if dist_m < 1000:
         sample_count = 1
         threshold = WATERWAY_PROXIMITY_M
@@ -456,14 +492,18 @@ def _is_edge_near_waterway(u, v):
         sample_count = 3
         threshold = WATERWAY_PROXIMITY_M
     else:
-        # 长边(>2km)使用更严格的阈值和更多采样点
         sample_count = 5
         threshold = min(WATERWAY_PROXIMITY_M, 500)
 
     for i in range(sample_count):
-        t = i / max(sample_count - 1, 1)
-        lat = n1['lat'] + t * (n2['lat'] - n1['lat'])
-        lon = n1['lon'] + t * (n2['lon'] - n1['lon'])
+        if edge_phys_path and len(edge_phys_path) >= 2:
+            n_pts = len(edge_phys_path)
+            pt_idx = int(round(i / max(sample_count - 1, 1) * (n_pts - 1)))
+            lat, lon = edge_phys_path[pt_idx]
+        else:
+            t = i / max(sample_count - 1, 1)
+            lat = n1['lat'] + t * (n2['lat'] - n1['lat'])
+            lon = n1['lon'] + t * (n2['lon'] - n1['lon'])
 
         grid_size = 0.02
         col = int(lon / grid_size)
@@ -496,11 +536,10 @@ def _is_edge_near_waterway(u, v):
         if min_dist_m > threshold:
             return False
 
-    # 长边(>2km)额外检查：沿边采样10个点，检查是否在水域面内
-    # 只对端点附近有水域面数据的边做此检测（避免内陆河道被误判）
-    # 如果存在连续3+个采样点在陆地上，说明穿过了岛屿/沙洲，应过滤
+    # ── Part 2: 水域面(polygon)穿陆检查（仅长边，沿 waypoint 全段采样）──
+    # 修复（2026-06-15）：用 waypoint 全段采样替代旧的 10 点直线采样
+    # 保持只对 >= 2000m 长边生效，避免对短边过度过滤
     if dist_m >= LONG_EDGE_STRICT_THRESHOLD_M and _water_polygon_geoms:
-        # 先检查端点附近是否有水域面数据
         grid_size = 0.02
         col1 = int(n1['lon'] / grid_size)
         row1 = int(n1['lat'] / grid_size)
@@ -509,40 +548,27 @@ def _is_edge_near_waterway(u, v):
         has_nearby_poly1 = bool(_water_polygon_grid.get((col1, row1)))
         has_nearby_poly2 = bool(_water_polygon_grid.get((col2, row2)))
         if has_nearby_poly1 and has_nearby_poly2:
-            # 修复（2026-06-07）：如果该边有 waypoints（船舶真实轨迹），
-            # 沿 waypoints 采样（而非直线）—— 真实轨迹是绕着岛屿的折线，
-            # 而直线穿岛不代表这条边不合法。
-            # 优先检查 waypoints 的物理路径；只有没有 waypoints 的边才走直线检查。
-            edge_phys_path = None
-            if edge_waypoints and ((u, v) in edge_waypoints or (v, u) in edge_waypoints):
-                pts = edge_waypoints.get((u, v)) or edge_waypoints.get((v, u))
-                if pts and len(pts) >= 2:
-                    edge_phys_path = [(p['lat'], p['lon']) for p in pts]
-
-            poly_sample_count = 10
-            land_count = 0
+            # 有 waypoint 时沿全段采样；无 waypoint 时沿直线采样
+            poly_sample_count = max(10, len(edge_phys_path)) if edge_phys_path else 10
             max_consecutive_land = 0
             consecutive_land = 0
             for i in range(poly_sample_count):
                 if edge_phys_path and len(edge_phys_path) >= 2:
-                    # 沿 waypoints 路径按累计距离百分比采样
-                    # 简化：直接用 waypoints 等间隔采样
-                    n = len(edge_phys_path)
-                    idx = int(round(i / max(poly_sample_count - 1, 1) * (n - 1)))
-                    lat, lon = edge_phys_path[idx]
+                    n_pts = len(edge_phys_path)
+                    pt_idx = int(round(i / max(poly_sample_count - 1, 1) * (n_pts - 1)))
+                    lat, lon = edge_phys_path[pt_idx]
                 else:
-                    # 直线采样（无 waypoints 的边）
                     t = i / max(poly_sample_count - 1, 1)
                     lat = n1['lat'] + t * (n2['lat'] - n1['lat'])
                     lon = n1['lon'] + t * (n2['lon'] - n1['lon'])
                 if not _is_point_in_water(lat, lon):
-                    land_count += 1
                     consecutive_land += 1
                     max_consecutive_land = max(max_consecutive_land, consecutive_land)
                 else:
                     consecutive_land = 0
-            # 连续5+个采样点在陆地 = 穿过岛屿（3-4个可能是窄航道边界不精确）
-            if max_consecutive_land >= 5:
+            # 自适应阈值：采样点越多容忍度越高（水域面边界有 50-100m 不确定度）
+            land_threshold = max(5, poly_sample_count // 3)
+            if max_consecutive_land >= land_threshold:
                 return False
 
     return True
@@ -674,6 +700,46 @@ def _filter_edges():
         if restored_count > 0:
             print(f"  - 恢复穿陆地但维持连通性的边: {restored_count}")
 
+    # ── 连通性恢复 Round 2（2026-06-15 新增）──
+    # 对所有被移除的边，如果移除后两端点在不同分量中（即这条边的缺失导致了碎片化），
+    # 按距离从小到大贪心恢复。这解决了 Round 1 只能恢复 polygon 失败边的局限性，
+    # 覆盖了因水系线距离、超长等原因被移除但对连通性至关重要的边。
+    import networkx as nx
+    restore_G2 = nx.Graph()
+    for nid in nodes_data:
+        restore_G2.add_node(nid)
+    for (u, v) in graph_edges:
+        restore_G2.add_edge(u, v)
+
+    # 收集所有被移除且连接不同分量的边
+    candidates = []
+    for (u, v), attrs in all_edges_backup.items():
+        if (u, v) in graph_edges:
+            continue
+        n1 = nodes_data.get(u)
+        n2 = nodes_data.get(v)
+        if not n1 or not n2:
+            continue
+        if not nx.has_path(restore_G2, u, v):
+            dist = haversine_distance(n1['lat'], n1['lon'], n2['lat'], n2['lon'])
+            candidates.append((dist, u, v, attrs))
+
+    # 按距离排序，贪心恢复（最短优先 → 优先用短边重建连通性）
+    candidates.sort(key=lambda x: x[0])
+    restored_round2 = 0
+    for dist, u, v, attrs in candidates:
+        if not nx.has_path(restore_G2, u, v):
+            graph_edges[(u, v)] = attrs
+            restore_G2.add_edge(u, v)
+            restored_round2 += 1
+
+    if restored_round2 > 0:
+        # 报告恢复统计
+        comps_after = list(nx.connected_components(restore_G2))
+        comps_after.sort(key=len, reverse=True)
+        main_pct = len(comps_after[0]) / len(nodes_data) * 100 if nodes_data else 0
+        print(f"  - Round 2 连通性恢复: {restored_round2} 条边, {len(comps_after)} 分量, 主分量 {main_pct:.1f}%")
+
     total_removed = original_count - len(graph_edges)
     print(f"\n边过滤完成:")
     print(f"  - 原始边数: {original_count}")
@@ -710,17 +776,25 @@ def _compute_graph_topology():
 
 # 船舶类型模板（基于 shipxy/CCS 309 艘真实数据按船型中位数聚合，2026-06-10 更新）
 # height/tonnage 无真实源，保留合理推断值
+# 2026-06-17 新增：执法船/挖泥船/液体散货/游艇/翼船/其他 六种模板，覆盖 CSV 全部船型
+# 2026-06-18 修正：大型集装箱船/大型油轮参数取 ship_characteristics_db.csv 对应船型 max 值
 SHIP_TEMPLATES = {
-    '小型货船': {'length': 50, 'width': 10, 'draft': 2.5, 'height': 10, 'tonnage': 1500, 'max_speed': 8},
-    '中型货船': {'length': 63, 'width': 13, 'draft': 3.2, 'height': 15, 'tonnage': 3000, 'max_speed': 8},
-    '大型货船': {'length': 120, 'width': 20, 'draft': 6.0, 'height': 20, 'tonnage': 15000, 'max_speed': 12},
-    '集装箱船': {'length': 50, 'width': 14, 'draft': 2.4, 'height': 20, 'tonnage': 3000, 'max_speed': 9},
-    '大型集装箱船': {'length': 200, 'width': 30, 'draft': 8.0, 'height': 35, 'tonnage': 35000, 'max_speed': 16},
-    '油轮': {'length': 68, 'width': 13, 'draft': 3.3, 'height': 12, 'tonnage': 2000, 'max_speed': 10},
-    '大型油轮': {'length': 200, 'width': 32, 'draft': 10.0, 'height': 18, 'tonnage': 50000, 'max_speed': 13},
-    '客船': {'length': 43, 'width': 10, 'draft': 2.0, 'height': 15, 'tonnage': 733, 'max_speed': 9},
-    '渔船': {'length': 17, 'width': 4, 'draft': 1.5, 'height': 5, 'tonnage': 200, 'max_speed': 6},
-    '拖船': {'length': 31, 'width': 10, 'draft': 2.2, 'height': 8, 'tonnage': 300, 'max_speed': 8},
+    '小型货船': {'length': 53, 'width': 11, 'draft': 2.6, 'height': 15, 'tonnage': 3000, 'max_speed': 8},
+    '中型货船': {'length': 63, 'width': 13, 'draft': 3.2, 'height': 15, 'tonnage': 994, 'max_speed': 8},
+    '大型货船': {'length': 77, 'width': 16, 'draft': 3.7, 'height': 15, 'tonnage': 3000, 'max_speed': 8},
+    '集装箱船': {'length': 49, 'width': 13, 'draft': 2.4, 'height': 15, 'tonnage': 3000, 'max_speed': 8},
+    '大型集装箱船': {'length': 70, 'width': 18, 'draft': 3.8, 'height': 15, 'tonnage': 3000, 'max_speed': 9.2},
+    '油轮': {'length': 63, 'width': 13, 'draft': 3.31, 'height': 15, 'tonnage': 1187, 'max_speed': 8},
+    '大型油轮': {'length': 96, 'width': 16, 'draft': 5.894, 'height': 15, 'tonnage': 3572, 'max_speed': 11},
+    '客船': {'length': 44, 'width': 9, 'draft': 1.85, 'height': 15, 'tonnage': 488, 'max_speed': 8},
+    '渔船': {'length': 17, 'width': 4, 'draft': 1.5, 'height': 8, 'tonnage': 200, 'max_speed': 6},
+    '拖船': {'length': 31, 'width': 10, 'draft': 2.2, 'height': 10, 'tonnage': 300, 'max_speed': 8},
+    '执法船': {'length': 50, 'width': 8, 'draft': 2.0, 'height': 15, 'tonnage': 500, 'max_speed': 18},
+    '挖泥船': {'length': 80, 'width': 16, 'draft': 4.5, 'height': 20, 'tonnage': 3000, 'max_speed': 6},
+    '液体散货': {'length': 70, 'width': 12, 'draft': 3.5, 'height': 15, 'tonnage': 2000, 'max_speed': 8},
+    '游艇': {'length': 30, 'width': 6, 'draft': 1.5, 'height': 10, 'tonnage': 100, 'max_speed': 20},
+    '翼船': {'length': 25, 'width': 8, 'draft': 1.0, 'height': 8, 'tonnage': 50, 'max_speed': 30},
+    '其他': {'length': 50, 'width': 10, 'draft': 2.5, 'height': 12, 'tonnage': 1000, 'max_speed': 8},
 }
 
 
@@ -788,18 +862,20 @@ def plan_paths(start_node, end_node, ship_type='中型货船', ship_name=None, m
     from datetime import datetime as _dt
     _init_navigator()
 
-    # 优先从真实数据库查参数
+    # 2026-06-17 改进：规范化 ship_type + NaN 安全的真实参数优先
     if ship_name and ship_name in ship_db:
         real = ship_db[ship_name]
+        resolved_type = real.get('ship_type', ship_type)
+        tpl = SHIP_TEMPLATES.get(resolved_type, SHIP_TEMPLATES['中型货船'])
         ship = ShipCharacteristics(
             ship_name=ship_name,
-            ship_type=real.get('ship_type', ship_type),
-            length=real.get('length') or SHIP_TEMPLATES.get(ship_type, {}).get('length', 100),
-            width=real.get('width') or SHIP_TEMPLATES.get(ship_type, {}).get('width', 15),
-            draft=real.get('draft') or SHIP_TEMPLATES.get(ship_type, {}).get('draft', 5),
-            height=real.get('height') or SHIP_TEMPLATES.get(ship_type, {}).get('height', 20),
-            tonnage=real.get('tonnage') or SHIP_TEMPLATES.get(ship_type, {}).get('tonnage', 5000),
-            max_speed=real.get('max_speed') or SHIP_TEMPLATES.get(ship_type, {}).get('max_speed', 15),
+            ship_type=resolved_type,
+            length=_safe_float(real.get('length'), tpl['length']),
+            width=_safe_float(real.get('width'), tpl['width']),
+            draft=_safe_float(real.get('draft'), tpl['draft']),
+            height=_safe_float(real.get('height'), tpl['height']),
+            tonnage=_safe_float(real.get('tonnage'), tpl['tonnage']),
+            max_speed=_safe_float(real.get('max_speed'), tpl['max_speed']),
         )
         ship_tpl = {
             'length': ship.length, 'width': ship.width, 'draft': ship.draft,
@@ -826,6 +902,7 @@ def plan_paths(start_node, end_node, ship_type='中型货船', ship_name=None, m
         PathType.FASTEST: '时间最短',
         PathType.BALANCED: '综合最优',
         PathType.FREQUENT: '通航频次最高',
+        PathType.SHORTEST: '距离最短',
         PathType.RELAXED: '约束放宽路径',
     }
 
@@ -858,6 +935,24 @@ def plan_paths(start_node, end_node, ship_type='中型货船', ship_name=None, m
         }
         routes.append(route)
 
+    # 选择推荐路径：按综合评分排序（安全+时间+距离）
+    if len(routes) > 1:
+        max_time = max(r['total_time_min'] for r in routes)
+        max_dist = max(r['total_distance_km'] for r in routes)
+        max_time = max(max_time, 1)
+        max_dist = max(max_dist, 1)
+
+        def route_score(r):
+            safety_norm = r['safety_score'] / 100
+            time_norm = 1 - (r['total_time_min'] / max_time)
+            dist_norm = 1 - (r['total_distance_km'] / max_dist)
+            return safety_norm * 0.40 + time_norm * 0.30 + dist_norm * 0.30
+
+        routes.sort(key=route_score, reverse=True)
+        recommended = routes[0]
+    else:
+        recommended = routes[0]
+
     return {
         'success': True,
         'timestamp': str(_dt.now()),
@@ -870,8 +965,8 @@ def plan_paths(start_node, end_node, ship_type='中型货船', ship_name=None, m
         },
         'start_node': start_node,
         'end_node': end_node,
-        'recommended_path': routes[0],
-        'alternative_paths': routes[1:],
+        'recommended_path': recommended,
+        'alternative_paths': [r for r in routes if r != recommended],
     }
 
 
@@ -880,6 +975,8 @@ def build_route_geojson(path_info, path_index):
     coordinates = []
     waypoints_list = []
     path_nodes = path_info.get('nodes', [])
+    # 记录每个坐标是否为节点锚点（简化时必须保留）
+    _anchor_flags = []
 
     for i, node_id in enumerate(path_nodes):
         node = nodes_data.get(node_id)
@@ -887,6 +984,7 @@ def build_route_geojson(path_info, path_index):
             continue
 
         coordinates.append([node['lon'], node['lat']])
+        _anchor_flags.append(True)  # 节点锚点，不可删除
         waypoints_list.append({
             'node_id': node_id,
             'lat': node['lat'],
@@ -912,15 +1010,11 @@ def build_route_geojson(path_info, path_index):
                 wp_list = list(reversed(wp_list))
 
             if wp_list:
-                # 1) RDP 简化：去除 GPS 锚地采样残留导致的 fold-back
-                #    eps=100m：保留偏离首尾连线 > 100m 的真实折点
+                # 1) RDP 简化（per-edge）：eps=200m，过滤 GPS 锚地残留 fold-back
+                #    修复(2026-06-15): 从 100m 提高到 200m，更多 waypoint 噪声被消除
                 wp_lonlats = [(wp['lon'], wp['lat']) for wp in wp_list]
-                wp_lonlats = _rdp_simplify(wp_lonlats, eps_deg=100 / 111000)
+                wp_lonlats = _rdp_simplify(wp_lonlats, eps_deg=200 / 111000)
                 # 2) 最小距离过滤：相邻坐标 < 50m 跳过
-                # 3) Fold-back 顶点检测：(d_ab + d_bc) / d_ac > 2 → b 是 fold 顶点
-                #    比点积法更鲁棒，能抓 1-2km 长段反向（如 1360→129 的 N-S 来回）
-                #    真急转弯：d_ab=100m, d_bc=100m, d_ac=140m(90°), ratio=1.43
-                #    真折返：d_ab=1km, d_bc=1km, d_ac=10m(几乎重合), ratio=200
                 MIN_SEG_M = 50
                 for wp_lon, wp_lat in wp_lonlats:
                     if coordinates:
@@ -928,38 +1022,367 @@ def build_route_geojson(path_info, path_index):
                         d = haversine_distance(last_lat, last_lon, wp_lat, wp_lon)
                         if d < MIN_SEG_M:
                             continue
-                        if len(coordinates) >= 2:
-                            prev_lon, prev_lat = coordinates[-2]
-                            d_ab = haversine_distance(prev_lat, prev_lon, last_lat, last_lon)
-                            d_ac = haversine_distance(prev_lat, prev_lon, wp_lat, wp_lon)
-                            if d_ac > 10 and (d_ab + d) / d_ac > FOLD_RATIO:
-                                # a→b→c 是局部 fold-back，b 是顶点
-                                # 不在这里删除，因为 a 可能是更早的 fold 顶点
-                                # 推迟到收敛循环统一处理
-                                pass
                     coordinates.append([wp_lon, wp_lat])
+                    _anchor_flags.append(False)  # waypoint 插入点，可被简化
 
-        # 4) 收敛循环：反复删除所有 fold-back 顶点直到稳定
-        #    单次删除可能让前一个 3 点成为新的 fold-back，需要迭代
-        #    注意：该循环位于 for i, node_id 内部，每个 edge 处理后立即执行，
-        #    跨多个 edge 的 fold-back 也能被捕获（如 RDP 后跨 edge 形成的折返）
+        # 3) Per-edge 收敛循环：删除当前 edge 内的 fold-back 顶点
         changed = True
         while changed and len(coordinates) >= 3:
             changed = False
-            i = 1
-            while i < len(coordinates) - 1:
-                a_lon, a_lat = coordinates[i-1]
-                b_lon, b_lat = coordinates[i]
-                c_lon, c_lat = coordinates[i+1]
+            j = 1
+            while j < len(coordinates) - 1:
+                if _anchor_flags[j]:
+                    j += 1
+                    continue
+                a_lon, a_lat = coordinates[j-1]
+                b_lon, b_lat = coordinates[j]
+                c_lon, c_lat = coordinates[j+1]
                 d_ab = haversine_distance(a_lat, a_lon, b_lat, b_lon)
                 d_bc = haversine_distance(b_lat, b_lon, c_lat, c_lon)
                 d_ac = haversine_distance(a_lat, a_lon, c_lat, c_lon)
                 if d_ac > 10 and (d_ab + d_bc) / d_ac > FOLD_RATIO:
-                    del coordinates[i]
+                    del coordinates[j]
+                    del _anchor_flags[j]
                     changed = True
-                    # 不增加 i，因为新位置可能继续触发
                     continue
-                i += 1
+                j += 1
+
+    # ── 保存密集坐标参考（用于后续跨陆地检测恢复原始航道弯折）──
+    _dense_coords = [c[:] for c in coordinates]
+
+    # ── 全局后处理（2026-06-15 新增）──
+    # 修复跨 edge 的多余转折：per-edge 简化无法捕获跨 edge 边界的 fold-back
+    # 和 GPS 锚地残留导致的 zigzag，需要在全局层面再做一轮简化。
+
+    if len(coordinates) > 4:
+        # 4) 全局 RDP 简化：eps=300m
+        #    对所有非锚点坐标进行简化，保留偏离 > 300m 的真实航道弯折。
+        #    节点锚点（_anchor_flags=True）始终保留。
+        GLOBAL_EPS_M = 300
+        global_eps_deg = GLOBAL_EPS_M / 111000
+
+        # 分段简化：以节点锚点为分段边界，对每段内的 waypoint 独立做 RDP
+        segments = []  # [(start_idx, end_idx), ...]
+        seg_start = 0
+        for k in range(1, len(coordinates)):
+            if _anchor_flags[k]:
+                if k > seg_start + 1:  # 段内有 waypoint 可简化
+                    segments.append((seg_start, k))
+                seg_start = k
+
+        # 对每段执行 RDP（保持段端点不动）
+        to_keep = [True] * len(coordinates)
+        for seg_s, seg_e in segments:
+            seg_pts = [tuple(coordinates[k]) for k in range(seg_s, seg_e + 1)]
+            if len(seg_pts) < 3:
+                continue
+            simplified = _rdp_simplify(seg_pts, eps_deg=global_eps_deg)
+            simplified_set = set(simplified)
+            for k in range(seg_s + 1, seg_e):  # 不改段端点
+                if not _anchor_flags[k] and tuple(coordinates[k]) not in simplified_set:
+                    to_keep[k] = False
+
+        # 重建 coordinates（保留锚点 + 通过全局 RDP 的 waypoint）
+        new_coords = []
+        new_flags = []
+        for k in range(len(coordinates)):
+            if to_keep[k]:
+                new_coords.append(coordinates[k])
+                new_flags.append(_anchor_flags[k])
+        coordinates = new_coords
+        _anchor_flags = new_flags
+
+    if len(coordinates) > 4:
+        # 5) 全局 Fold-back 收敛循环
+        #    检测跨 edge 的 fold-back（如 GPS 锚地造成的 N-S 来回）
+        #    仅删除非锚点坐标
+        changed = True
+        max_iterations = 10  # 防止无限循环
+        iteration = 0
+        while changed and len(coordinates) >= 3 and iteration < max_iterations:
+            changed = False
+            iteration += 1
+            j = 1
+            while j < len(coordinates) - 1:
+                if _anchor_flags[j]:
+                    j += 1
+                    continue
+                a_lon, a_lat = coordinates[j-1]
+                b_lon, b_lat = coordinates[j]
+                c_lon, c_lat = coordinates[j+1]
+                d_ab = haversine_distance(a_lat, a_lon, b_lat, b_lon)
+                d_bc = haversine_distance(b_lat, b_lon, c_lat, c_lon)
+                d_ac = haversine_distance(a_lat, a_lon, c_lat, c_lon)
+                if d_ac > 10 and (d_ab + d_bc) / d_ac > FOLD_RATIO:
+                    del coordinates[j]
+                    del _anchor_flags[j]
+                    changed = True
+                    continue
+                j += 1
+
+    if len(coordinates) > 4:
+        # 5.5) 增强锯齿过滤（2026-06-16 v2 重写）
+        #      原 v1 过滤器的 d_ab/d_bc < 1000m 距离约束太严格，
+        #      导致 d_ab=1588m/turn=176.9° 等明显折返被漏掉。
+        #      v2 策略：分两轮，先抓尖锐折返（角度驱动），再抓中等锯齿（ratio 驱动）。
+        import math as _math
+
+        def _calc_turn(j):
+            """计算 coordinates[j] 处的转折角度和距离指标"""
+            a_lon, a_lat = coordinates[j-1]
+            b_lon, b_lat = coordinates[j]
+            c_lon, c_lat = coordinates[j+1]
+            d_ab = haversine_distance(a_lat, a_lon, b_lat, b_lon)
+            d_bc = haversine_distance(b_lat, b_lon, c_lat, c_lon)
+            d_ac = haversine_distance(a_lat, a_lon, c_lat, c_lon)
+            v1x, v1y = a_lon - b_lon, a_lat - b_lat
+            v2x, v2y = c_lon - b_lon, c_lat - b_lat
+            dot = v1x * v2x + v1y * v2y
+            mag1 = _math.sqrt(v1x**2 + v1y**2)
+            mag2 = _math.sqrt(v2x**2 + v2y**2)
+            if mag1 * mag2 > 1e-12:
+                cos_a = max(-1.0, min(1.0, dot / (mag1 * mag2)))
+                turn_deg = 180.0 - _math.degrees(_math.acos(cos_a))
+            else:
+                turn_deg = 0
+            ratio = (d_ab + d_bc) / d_ac if d_ac > 10 else 1.0
+            return turn_deg, ratio, d_ab, d_bc, d_ac
+
+        # Pass 5.5a: 尖锐折返 — turn > 140° 且 ratio > 1.3（不限距离）
+        #   接近掉头的转折，无论段长多长都应消除
+        changed = True
+        while changed and len(coordinates) >= 3:
+            changed = False
+            j = 1
+            while j < len(coordinates) - 1:
+                if _anchor_flags[j]:
+                    j += 1
+                    continue
+                turn_deg, ratio, d_ab, d_bc, d_ac = _calc_turn(j)
+                if turn_deg > 140 and ratio > 1.3:
+                    del coordinates[j]
+                    del _anchor_flags[j]
+                    changed = True
+                    continue
+                j += 1
+
+        # Pass 5.5b: 中等锯齿 — ratio > 1.25 且 turn > 70°（不限距离）
+        #   绕行比 > 1.25 表示走了至少 25% 的冤枉路，配合 70°+ 转折判定为锯齿
+        #   ratio 条件本身已足够保护真实航道弯折（大弯道 ratio 通常 < 1.15）
+        changed = True
+        while changed and len(coordinates) >= 3:
+            changed = False
+            j = 1
+            while j < len(coordinates) - 1:
+                if _anchor_flags[j]:
+                    j += 1
+                    continue
+                turn_deg, ratio, d_ab, d_bc, d_ac = _calc_turn(j)
+                if ratio > 1.25 and turn_deg > 70:
+                    del coordinates[j]
+                    del _anchor_flags[j]
+                    changed = True
+                    continue
+                j += 1
+
+        # Pass 5.5c: 不必要转弯消除 — turn > 100° 且 ratio > 1.1
+        #   针对简化后残留的尖锐转弯：即使绕行比不高，
+        #   超过 100° 的转弯在视觉上仍显突兀，且通常不是航道必需弯折
+        changed = True
+        while changed and len(coordinates) >= 3:
+            changed = False
+            j = 1
+            while j < len(coordinates) - 1:
+                if _anchor_flags[j]:
+                    j += 1
+                    continue
+                turn_deg, ratio, d_ab, d_bc, d_ac = _calc_turn(j)
+                if turn_deg > 100 and ratio > 1.1:
+                    del coordinates[j]
+                    del _anchor_flags[j]
+                    changed = True
+                    continue
+                j += 1
+
+    if len(coordinates) > 4:
+        # 6) Near-U-turn 消除：收敛循环检测角度 > 120° 且前后段 < 800m 的转折点
+        #    修复(2026-06-16 v2): 角度从 130° 降至 120°，距离从 600m 升至 800m
+        #    v3: 改为收敛循环，一次 pass 可能暴露新的 U-turn
+        changed = True
+        while changed and len(coordinates) >= 3:
+            changed = False
+            j = 1
+            while j < len(coordinates) - 1:
+                if _anchor_flags[j]:
+                    j += 1
+                    continue
+                a_lon, a_lat = coordinates[j-1]
+                b_lon, b_lat = coordinates[j]
+                c_lon, c_lat = coordinates[j+1]
+                d_ab = haversine_distance(a_lat, a_lon, b_lat, b_lon)
+                d_bc = haversine_distance(b_lat, b_lon, c_lat, c_lon)
+                v1x, v1y = a_lon - b_lon, a_lat - b_lat
+                v2x, v2y = c_lon - b_lon, c_lat - b_lat
+                dot = v1x * v2x + v1y * v2y
+                mag1 = _math.sqrt(v1x**2 + v1y**2)
+                mag2 = _math.sqrt(v2x**2 + v2y**2)
+                if mag1 * mag2 > 1e-12:
+                    cos_a = max(-1.0, min(1.0, dot / (mag1 * mag2)))
+                    turn_deg = 180.0 - _math.degrees(_math.acos(cos_a))
+                else:
+                    turn_deg = 0
+
+                if turn_deg > 120 and d_ab < 800 and d_bc < 800:
+                    del coordinates[j]
+                    del _anchor_flags[j]
+                    changed = True
+                    continue
+                j += 1
+
+    # ── Pass 7: 跨陆地检测与修复（2026-06-16 新增）──
+    # 简化可能导致相邻坐标之间的直线穿过陆地（如河流弯道处直线跨越半岛）。
+    # 检测方式：沿简化后线段多点采样，用 _is_point_in_water() 判断是否在水域内。
+    # 修复方式：若检测到穿陆，从密集坐标参考（全局简化前的航道路径）中恢复中间点。
+    if _water_polygon_geoms and len(coordinates) >= 3:
+        def _restore_segment(si, ei, depth=0):
+            """递归检测并修复 _dense_coords[si:ei+1] 范围内的跨陆线段"""
+            if ei - si <= 1:
+                return [_dense_coords[ei]]
+
+            # 沿直线均匀采样 5 个点（不含端点）
+            n_samples = 5
+            land_detected = False
+            for k in range(1, n_samples):
+                t = k / n_samples
+                lat = _dense_coords[si][1] + t * (_dense_coords[ei][1] - _dense_coords[si][1])
+                lon = _dense_coords[si][0] + t * (_dense_coords[ei][0] - _dense_coords[si][0])
+                if not _is_point_in_water(lat, lon):
+                    land_detected = True
+                    break
+
+            if not land_detected:
+                return [_dense_coords[ei]]  # 直线段安全，无需恢复
+
+            if depth >= 3:
+                # 达到递归上限，恢复全段密集坐标保证安全
+                return [_dense_coords[k] for k in range(si + 1, ei + 1)]
+
+            mid = (si + ei) // 2
+            left = _restore_segment(si, mid, depth + 1)
+            right = _restore_segment(mid, ei, depth + 1)
+            return left + right
+
+        new_coords = [coordinates[0]]
+        new_flags = [_anchor_flags[0]]
+        seg_len_threshold = 300  # 仅检查 > 300m 的线段
+
+        for i in range(len(coordinates) - 1):
+            lon1, lat1 = coordinates[i]
+            lon2, lat2 = coordinates[i + 1]
+            seg_m = haversine_distance(lat1, lon1, lat2, lon2)
+
+            if seg_m <= seg_len_threshold:
+                new_coords.append(coordinates[i + 1])
+                new_flags.append(_anchor_flags[i + 1])
+                continue
+
+            # 快速中点检测
+            mid_lat = (lat1 + lat2) / 2
+            mid_lon = (lon1 + lon2) / 2
+            if _is_point_in_water(mid_lat, mid_lon):
+                new_coords.append(coordinates[i + 1])
+                new_flags.append(_anchor_flags[i + 1])
+                continue
+
+            # 中点不在水域 → 尝试从密集坐标恢复
+            si_match = None
+            ei_match = None
+            for k in range(len(_dense_coords)):
+                if _dense_coords[k] == coordinates[i]:
+                    si_match = k
+                if _dense_coords[k] == coordinates[i + 1]:
+                    ei_match = k
+                    break
+
+            if si_match is not None and ei_match is not None and ei_match > si_match + 1:
+                restored = _restore_segment(si_match, ei_match)
+                for pt in restored:
+                    new_coords.append(pt)
+                    new_flags.append(False)
+            else:
+                new_coords.append(coordinates[i + 1])
+                new_flags.append(_anchor_flags[i + 1])
+
+        coordinates = new_coords
+        _anchor_flags = new_flags
+
+    # ── Pass 8: 锚点拐角平滑 v3（2026-06-16）──
+    # 拓扑节点（锚点）位置可能形成尖锐转折（如 163.7° U-turn），
+    # 因锚点不可删除，前面所有简化器无法处理。
+    # 删除锚点后可能产生新的 >140° 转折，因此 >140° 处理需迭代。
+    # 策略：
+    #   >140° 近 U-turn：删除中间点（A→C 直连），锚点和自由点都处理
+    #   90°-140° 尖角（仅锚点）：中点切角（A→mid_AB→mid_BC→C）
+    SMOOTH_UTURN_THRESHOLD = 140  # deg
+    SMOOTH_SHARP_THRESHOLD = 90   # deg
+    if len(coordinates) >= 3:
+        import math as _math  # fix: 确保 _math 在 Pass 8 作用域内可用
+        # 迭代删除 >140° 转折（删除一个可能暴露相邻新转折）
+        for _iter in range(5):
+            uturn_indices = []
+            for j in range(1, len(coordinates) - 1):
+                a_lon, a_lat = coordinates[j-1]
+                b_lon, b_lat = coordinates[j]
+                c_lon, c_lat = coordinates[j+1]
+                v1x, v1y = a_lon - b_lon, a_lat - b_lat
+                v2x, v2y = c_lon - b_lon, c_lat - b_lat
+                dot = v1x * v2x + v1y * v2y
+                mag1 = _math.sqrt(v1x**2 + v1y**2)
+                mag2 = _math.sqrt(v2x**2 + v2y**2)
+                if mag1 * mag2 > 1e-12:
+                    cos_a = max(-1.0, min(1.0, dot / (mag1 * mag2)))
+                    turn_deg = 180.0 - _math.degrees(_math.acos(cos_a))
+                else:
+                    continue
+                if turn_deg > SMOOTH_UTURN_THRESHOLD:
+                    uturn_indices.append(j)
+            if not uturn_indices:
+                break
+            for j in reversed(uturn_indices):
+                del coordinates[j]
+                del _anchor_flags[j]
+        # 对残留锚点尖角做中点切角
+        sharp_indices = []
+        for j in range(1, len(coordinates) - 1):
+            if not _anchor_flags[j]:
+                continue
+            a_lon, a_lat = coordinates[j-1]
+            b_lon, b_lat = coordinates[j]
+            c_lon, c_lat = coordinates[j+1]
+            v1x, v1y = a_lon - b_lon, a_lat - b_lat
+            v2x, v2y = c_lon - b_lon, c_lat - b_lat
+            dot = v1x * v2x + v1y * v2y
+            mag1 = _math.sqrt(v1x**2 + v1y**2)
+            mag2 = _math.sqrt(v2x**2 + v2y**2)
+            if mag1 * mag2 > 1e-12:
+                cos_a = max(-1.0, min(1.0, dot / (mag1 * mag2)))
+                turn_deg = 180.0 - _math.degrees(_math.acos(cos_a))
+            else:
+                continue
+            if turn_deg > SMOOTH_SHARP_THRESHOLD:
+                sharp_indices.append((j, turn_deg))
+        for j, turn_deg in reversed(sharp_indices):
+            a_lon, a_lat = coordinates[j-1]
+            b_lon, b_lat = coordinates[j]
+            c_lon, c_lat = coordinates[j+1]
+            p1_lon = (a_lon + b_lon) / 2.0
+            p1_lat = (a_lat + b_lat) / 2.0
+            p2_lon = (b_lon + c_lon) / 2.0
+            p2_lat = (b_lat + c_lat) / 2.0
+            coordinates[j] = [p1_lon, p1_lat]
+            _anchor_flags[j] = False
+            coordinates.insert(j + 1, [p2_lon, p2_lat])
+            _anchor_flags.insert(j + 1, False)
 
     return {
         'path_id': path_index + 1,
@@ -984,8 +1407,12 @@ def index():
 
 @app.route('/api/ship_types', methods=['GET'])
 def get_ship_types():
-    types = list(SHIP_TEMPLATES.keys())
-    return jsonify({'success': True, 'data': types})
+    # 返回 ship_db 中实际存在的船型（已规范化），同时包含所有模板类型
+    db_types = sorted(set(d['ship_type'] for d in ship_db.values()))
+    tpl_types = list(SHIP_TEMPLATES.keys())
+    # 合并去重，保持模板类型在前
+    all_types = list(dict.fromkeys(tpl_types + db_types))
+    return jsonify({'success': True, 'data': all_types})
 
 
 @app.route('/api/ships', methods=['GET'])
@@ -1003,10 +1430,10 @@ def get_ships():
         results.append({
             'ship_name': name,
             'ship_type': data['ship_type'],
-            'length': data.get('length'),
-            'width': data.get('width'),
-            'draft': data.get('draft'),
-            'tonnage': data.get('tonnage'),
+            'length': _safe_float(data.get('length')),
+            'width': _safe_float(data.get('width')),
+            'draft': _safe_float(data.get('draft')),
+            'tonnage': _safe_float(data.get('tonnage')),
             'data_source': data.get('data_source', ''),
         })
 
@@ -1143,7 +1570,7 @@ def plan_route():
         if end_freq < 10:
             warnings_list.append(f'终点匹配的航道节点通航频次较低({end_freq}次)，匹配精度有限')
 
-        result = plan_paths(start_node, end_node, ship_type, ship_name=ship_name, max_paths=3)
+        result = plan_paths(start_node, end_node, ship_type, ship_name=ship_name, max_paths=4)
 
         if not result.get('success'):
             base_msg = result.get('message', '路径规划失败')

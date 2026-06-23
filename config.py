@@ -96,3 +96,7 @@ VISUALIZATION_CONFIG = {
     'trajectory_alpha': 0.3,
     'show_node_labels': True,
 }
+
+# ==================== 船讯网 API 配置 ====================
+SHIPXY_API_KEY = os.environ.get('SHIPXY_API_KEY', '')  # 从环境变量读取，也可手动填入
+SHIPXY_API_ENABLED = bool(SHIPXY_API_KEY)  # 有 key 才启用在线查询

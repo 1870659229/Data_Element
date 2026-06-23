@@ -42,6 +42,19 @@ data_osm/water_polygons_buffer500m.geojson
 
 # 论文参考（整个目录不进 git，含 PDF + .md 笔记）
 参考文献/
+参考范文/
+
+# 论文写作工作区（中间产物 + 脚本，非项目核心代码）
+paper_rewriting_output/
+
+# IDE / Agent 配置
+.qoder/
+
+# GNN 训练权重（~4MB，可重训练生成）
+output/weight_model_gnn_gnn_state.pt
+
+# Word 文档（论文要求、评分标准等非代码文件）
+*.docx
 
 # 训练产出的大文件
 output/cleaned_data.csv
@@ -67,3 +80,10 @@ _show2.py
 _split2.py
 _split3.py
 _rebuild_manifest.py
+
+# 系统/输入法进程漏到项目根的日志（与项目代码无关，删除+屏蔽）
+debug.log
+nohup.out
+trace.log
+crash.log
+_env_*.log

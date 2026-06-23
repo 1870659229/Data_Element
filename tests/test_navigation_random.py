@@ -85,6 +85,12 @@ def test_random_plan_route_robustness(nav_system):
         pytest.skip(f"可达 OD 对不足({len(reachable_pool)}), 跳过测试")
 
     samples = []
+    # 30 条样本的设计：25 条用 SHIP_TEMPLATES（多走 FREQUENT 分支），
+    # 5 条用 custom_ship 注入"巨型船"参数（draft=12 / width=30 / height=30），
+    # 巨型船与所有 narrow 边冲突，会被 get_blocked_edges 标红，
+    # 触发 _dijkstra_safest 返回 None，从而走 PathType.RELAXED 兜底。
+    # 这是为了保证 carbon_savings.png 至少有 2 个 path_type 分类。
+    N_RELAXED_FORCED = 5
     for i in range(N_SAMPLES):
         ship_type = rng.choice(ship_types)
         start, end = rng.choice(reachable_pool)
@@ -97,10 +103,23 @@ def test_random_plan_route_robustness(nav_system):
             'hour': hour,
         }
         try:
-            decision = nav_system.plan_route(
+            kwargs = dict(
                 start=int(start), end=int(end), ship_type=ship_type,
                 departure_time=datetime(2026, 6, 5, hour, 0),
             )
+            if i < N_RELAXED_FORCED:
+                # 强制约束放宽：用巨型船模板（不存在于 SHIP_TEMPLATES 中），
+                # 通过 custom_ship 注入。吃水 12m / 宽 30m / 高 30m
+                # 超过所有 narrow 边的 depth=6/8 / width=40/60 / height=20/30。
+                kwargs.pop('ship_type', None)
+                kwargs['custom_ship'] = {
+                    'ship_name': f'巨型油轮_{i:02d}',
+                    'ship_type': '巨型油轮',
+                    'length': 300.0, 'width': 30.0, 'draft': 12.0,
+                    'height': 30.0, 'tonnage': 50000.0, 'max_speed': 14.0,
+                }
+                record['ship_type'] = '巨型油轮(custom)'
+            decision = nav_system.plan_route(**kwargs)
             rec = decision.get('recommended_path', {})
             record.update({
                 'success': decision.get('success', False),

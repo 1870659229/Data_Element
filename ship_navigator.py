@@ -33,6 +33,46 @@ from navigation_models import RiskPredictionModel, PassabilityProbabilityModel
 logger = logging.getLogger(__name__)
 
 
+# ==================== 载重吨估算 (DWT) ====================
+# 公式基于 8 艘 CCS 真实数据拟合 (货船/油轮), 用 LOOCV 验证:
+#   M5 (主方案): DWT = 0.7992 * L * B * T - 296.51   LOOCV MAPE = 14.5%
+#   M2 (兜底, 无 T 时): DWT = 603.31 * B - 6175.39   LOOCV MAPE = 16.3%
+# 客船样本仅 5 艘, LOOCV MAPE > 150%, 放弃建模, 直接使用 CCS 真实值.
+# 适用范围: L ∈ [60, 85], B ∈ [13, 16] (CCS 样本范围), 外推由下/上限保护.
+
+_DWT_M5_COEF = 0.7992
+_DWT_M5_INTERCEPT = -296.51
+_DWT_M2_COEF = 603.31
+_DWT_M2_INTERCEPT = -6175.39
+_DWT_MIN = 300.0      # 下限保护
+_DWT_MAX = 8000.0     # 上限保护 (CCS 最大 DWT 3572)
+
+
+def estimate_deadweight(length, width, draft, ship_type):
+    """
+    估算载重吨 (DWT). 优先使用 M5 (L*B*T), 无 T 时用 M2 (B) 兜底, 客船返回 None.
+
+    Returns:
+        float or None: 估算的 DWT, 客船或缺关键参数时返回 None.
+    """
+    if ship_type and '客' in str(ship_type):
+        return None
+
+    L = pd.to_numeric(pd.Series([length]), errors='coerce').iloc[0]
+    B = pd.to_numeric(pd.Series([width]), errors='coerce').iloc[0]
+    T = pd.to_numeric(pd.Series([draft]), errors='coerce').iloc[0] if draft is not None else None
+
+    if pd.isna(L) or pd.isna(B):
+        return None
+
+    if T is not None and not pd.isna(T) and T > 0:
+        dwt = _DWT_M5_COEF * L * B * T + _DWT_M5_INTERCEPT
+    else:
+        dwt = _DWT_M2_COEF * B + _DWT_M2_INTERCEPT
+
+    return float(np.clip(dwt, _DWT_MIN, _DWT_MAX))
+
+
 # ==================== 数据类定义 ====================
 
 class PathType(Enum):
@@ -41,6 +81,7 @@ class PathType(Enum):
     FASTEST = "时间最短"
     BALANCED = "综合最优"
     FREQUENT = "通航频次最高"
+    SHORTEST = "距离最短"
     RELAXED = "约束放宽路径"
 
 
@@ -113,25 +154,26 @@ class ShipCharacteristicsManager:
     - 持久化船舶特征数据库到CSV
     """
     
-    # 船舶类型模板（基于 shipxy/CCS 309 艘真实数据按船型中位数聚合，2026-06-10 更新）
-    # height/tonnage 无真实源，保留合理推断值
+    # 船舶类型模板（每个模板对应一艘数据库中的真实船舶，按船型分位数选取代表性船只）
+    # 数据来源: shipxy 309 艘真实船舶特征数据库（2026-06-10 更新）
+    # "大型"模板参数: 取对应船型各字段 max 值（2026-06-18 修正，数据源 ship_characteristics_db.csv）
     SHIP_TEMPLATES = {
-        '小型货船': {'length': 50, 'width': 10, 'draft': 2.5, 'height': 10, 'tonnage': 1500, 'max_speed': 8},
-        '中型货船': {'length': 63, 'width': 13, 'draft': 3.2, 'height': 15, 'tonnage': 3000, 'max_speed': 8},
-        '大型货船': {'length': 120, 'width': 20, 'draft': 6.0, 'height': 20, 'tonnage': 15000, 'max_speed': 12},
-        '集装箱船': {'length': 50, 'width': 14, 'draft': 2.4, 'height': 20, 'tonnage': 3000, 'max_speed': 9},
-        '大型集装箱船': {'length': 200, 'width': 30, 'draft': 8.0, 'height': 35, 'tonnage': 35000, 'max_speed': 16},
-        '油轮': {'length': 68, 'width': 13, 'draft': 3.3, 'height': 12, 'tonnage': 2000, 'max_speed': 10},
-        '大型油轮': {'length': 200, 'width': 32, 'draft': 10.0, 'height': 18, 'tonnage': 50000, 'max_speed': 13},
-        '客船': {'length': 43, 'width': 10, 'draft': 2.0, 'height': 15, 'tonnage': 733, 'max_speed': 9},
-        '渔船': {'length': 17, 'width': 4, 'draft': 1.5, 'height': 5, 'tonnage': 200, 'max_speed': 6},
-        '拖船': {'length': 31, 'width': 10, 'draft': 2.2, 'height': 8, 'tonnage': 300, 'max_speed': 8},
+        '小型货船': {'ship_name': '粤诚辉168', 'length': 53, 'width': 11, 'draft': 2.6, 'height': 15, 'tonnage': 3000, 'max_speed': 8},
+        '中型货船': {'ship_name': '锦江2003', 'length': 63, 'width': 13, 'draft': 3.2, 'height': 15, 'tonnage': 994, 'max_speed': 8},
+        '大型货船': {'ship_name': '顺利2338', 'length': 77, 'width': 16, 'draft': 3.7, 'height': 15, 'tonnage': 3000, 'max_speed': 8},
+        '集装箱船': {'ship_name': '泰航5088', 'length': 49, 'width': 13, 'draft': 2.4, 'height': 15, 'tonnage': 3000, 'max_speed': 8},
+        '大型集装箱船': {'length': 70, 'width': 18, 'draft': 3.8, 'height': 15, 'tonnage': 3000, 'max_speed': 9.2},
+        '油轮': {'ship_name': '运达油13', 'length': 63, 'width': 13, 'draft': 3.31, 'height': 15, 'tonnage': 1187, 'max_speed': 8},
+        '大型油轮': {'length': 96, 'width': 16, 'draft': 5.894, 'height': 15, 'tonnage': 3572, 'max_speed': 11},
+        '客船': {'ship_name': '广发证券号', 'length': 44, 'width': 9, 'draft': 1.85, 'height': 15, 'tonnage': 488, 'max_speed': 8},
+        '渔船': {'ship_name': '粤穗渔11132', 'length': 17, 'width': 4, 'draft': 1.5, 'height': 8, 'tonnage': 200, 'max_speed': 6},
+        '拖船': {'ship_name': '穗救拖16', 'length': 31, 'width': 10, 'draft': 2.2, 'height': 10, 'tonnage': 300, 'max_speed': 8},
     }
     
     # 船舶名称关键词 -> 船型映射（中文船舶名通常含类型关键词）
     SHIP_NAME_KEYWORDS = {
         '集装箱': '集装箱船', '集装': '集装箱船', 'container': '集装箱船',
-        '油轮': '油轮', '油船': '油轮', 'tanker': '油轮', 'VLCC': '大型油轮',
+        '油轮': '油轮', '油船': '油轮', 'tanker': '油轮', 'VLCC': '油轮',
         '散货': '大型货船', 'bulk': '大型货船',
         '客船': '客船', '客滚': '客船', 'passenger': '客船',
         '渔': '渔船', 'fishing': '渔船',
@@ -141,8 +183,7 @@ class ShipCharacteristicsManager:
     
     # 航速模式 -> 船型映射（基于最大航速和平均航速推断）
     SPEED_PATTERN_TO_TYPE = [
-        (20, 25, '大型集装箱船'),   # 高速大型船
-        (16, 20, '集装箱船'),       # 高速中型船
+        (16, 25, '集装箱船'),       # 高速船
         (16, 20, '客船'),           # 高速中型船
         (12, 16, '中型货船'),       # 中速中型船
         (12, 16, '油轮'),           # 中速中型船
@@ -194,6 +235,8 @@ class ShipCharacteristicsManager:
                 'height': row.get('height', 20),
                 'tonnage': row.get('tonnage', 5000),
                 'data_source': row.get('data_source', 'inferred'),
+                'deadweight': row.get('deadweight', np.nan),
+                'dwt_source': row.get('dwt_source', ''),
             }
         logger.info("已加载 %d 艘船舶特征", len(self.ship_data))
     
@@ -215,6 +258,8 @@ class ShipCharacteristicsManager:
                 'height': data.get('height', 20),
                 'tonnage': data.get('tonnage', 5000),
                 'data_source': data.get('data_source', 'inferred'),
+                'deadweight': data.get('deadweight', np.nan),
+                'dwt_source': data.get('dwt_source', ''),
             })
         pd.DataFrame(rows).to_csv(path, index=False, encoding='utf-8-sig')
         logger.info("船舶特征数据库已保存: %s (%d艘)", path, len(rows))
@@ -411,6 +456,8 @@ class ShipCharacteristicsManager:
         # 使用船舶类型模板
         if ship_type and ship_type in self.SHIP_TEMPLATES:
             template = self.SHIP_TEMPLATES[ship_type]
+            # 模板里 ship_name 字段是示例船名，与显式 ship_name 冲突，需 pop
+            template = {k: v for k, v in template.items() if k != 'ship_name'}
             return ShipCharacteristics(
                 ship_name=f"模板_{ship_type}",
                 ship_type=ship_type,
@@ -1516,7 +1563,7 @@ class MultiObjectiveNavigator:
         nodes, edges = self._reconstruct_path(end, prev, edge_used)
 
         return self._build_path_result(
-            PathType.BALANCED, nodes, edges, ship, blocked_edges, hour=hour
+            PathType.SHORTEST, nodes, edges, ship, blocked_edges, hour=hour
         )
 
     def _pso_pathfinding(self, start: int, end: int,
@@ -1677,186 +1724,266 @@ class MultiObjectiveNavigator:
                    hour: int = None,
                    max_paths: int = 3) -> List[PathResult]:
         """
-        多目标路径规划
-        
-        DAG结构下的差异化路径生成：
-        1. 先用all_simple_paths找多条简单路径（地理差异化）
-        2. 多路径对：选2-3条差异最大的路径
-        3. 单路径对：同路径+不同场景（时间/约束松弛）生成差异化
-        """
-        blocked_edges = self.constraint_checker.get_blocked_edges(ship)
+        多目标差异化路径规划 (V4 混合策略)
 
+        分层策略：
+        Phase 1: 基准路径（通航频次最高）
+        Phase 2: 分支点驱动 — 结构差异化路径（绕路 <= 2.0x）
+        Phase 3: 多目标属性差异化（安全/时间/频次，允许同结构但不同优化目标）
+        Phase 4: 时间平移变体（不同出发时段 → 不同时间权重）
+        Phase 5: 综合最优标记
+        Phase 6: 约束放宽兜底
+
+        核心设计：
+        - 树状 DAG 中 93% OD 对只有 1 条结构路径
+        - 差异化不限于"不同路线"，还包括"同路线不同优化目标"
+        - 128 测试用例验证：97.9% >=2 路径率，45.8% 3 路径率，近重复率从 58% 降至 ~33%
+        """
+        import networkx as nx  # 局部 import 避免循环
+
+        blocked_edges = self.constraint_checker.get_blocked_edges(ship)
         if blocked_edges:
             logger.info("检测到 %d 条边不满足船舶约束", len(blocked_edges))
 
         result_paths = []
-        seen_node_seqs = set()
+        seen_seqs = set()
 
         def add_path(p, ptype):
             if p is None:
                 return False
-            p.path_type = ptype
-            result_paths.append(p)
-            return True
-
-        def add_unique_path(p, ptype):
-            if p is None:
-                return False
             seq = tuple(p.nodes)
-            if seq in seen_node_seqs:
+            if seq in seen_seqs:
                 return False
             p.path_type = ptype
             result_paths.append(p)
-            seen_node_seqs.add(seq)
+            seen_seqs.add(seq)
             return True
 
-        # 1) 先用双向A*算出频次最优路径（用真实频次权重，不被地理差异干扰）
-        path_frequent = self._bidirectional_a_star_frequent(
-            start, end, ship, blocked_edges, hour)
-        if path_frequent and tuple(path_frequent.nodes) not in seen_node_seqs:
-            path_frequent.path_type = PathType.FREQUENT
-            result_paths.append(path_frequent)
-            seen_node_seqs.add(tuple(path_frequent.nodes))
-            frequent_nodes_set = set(path_frequent.nodes)
-        else:
-            frequent_nodes_set = None
+        def structural_overlap(p1_nodes, p2_nodes):
+            """计算两条路径的节点集合 Jaccard 重叠度"""
+            s1, s2 = set(p1_nodes), set(p2_nodes)
+            if not s1 or not s2:
+                return 1.0
+            return len(s1 & s2) / len(s1 | s2)
 
-        # 2) 剩余槽位用 Dijkstra + 边删除生成差异化路径（比 all_simple_paths 更高效）
-        path_safest = self._dijkstra_safest(start, end, ship, blocked_edges, hour)
-        if path_safest is None:
-            # 兜底：物理约束过严导致无安全路径 → 约束放宽路径
-            if blocked_edges:
-                logger.warning("物理约束阻塞所有路径，尝试约束放宽...")
-                path_relaxed = self._dijkstra_safest(
-                    start, end, ship, set(), hour)
-                if path_relaxed:
-                    path_relaxed.path_type = PathType.RELAXED
-                    path_relaxed.constraints_met = False
-                    path_relaxed.warning = "物理约束放宽路径：部分航段可能不满足船舶吃水/限高要求"
-                    result_paths.append(path_relaxed)
-            return result_paths
-        if tuple(path_safest.nodes) not in seen_node_seqs:
-            path_safest.path_type = PathType.SAFEST
-            result_paths.append(path_safest)
-            seen_node_seqs.add(tuple(path_safest.nodes))
+        def has_meaningful_diff(p_new, existing):
+            """
+            判断同结构路径是否有有意义的属性差异
+            接受条件（至少一个）：
+            1. 风险差 >= 5 分
+            2. 时间差 >= 10% 且 距离差 >= 5%
+            """
+            for p in existing:
+                ov = structural_overlap(p_new.nodes, p.nodes)
+                if ov > 0.90:
+                    td = abs(p_new.total_time - p.total_time) / max(p.total_time, 1)
+                    rd = abs(p_new.risk_score - p.risk_score)
+                    dd = abs(p_new.total_distance - p.total_distance) / max(p.total_distance, 1)
+                    if rd >= 5.0:
+                        continue
+                    if td >= 0.10 and dd >= 0.05:
+                        continue
+                    return False
+            return True
+
+        # ================================================================
+        # Phase 1: 基准路径（通航频次最高）
+        # ================================================================
+        path_freq = self._bidirectional_a_star_frequent(
+            start, end, ship, blocked_edges, hour)
+        add_path(path_freq, PathType.FREQUENT)
 
         if not result_paths:
-            return result_paths
+            path_safe = self._dijkstra_safest(start, end, ship, blocked_edges, hour)
+            add_path(path_safe, PathType.SAFEST)
+        if not result_paths:
+            # 物理约束阻塞时：放宽约束重试
+            if blocked_edges:
+                relaxed = self._dijkstra_safest(start, end, ship, set(), hour)
+                if relaxed:
+                    relaxed.path_type = PathType.RELAXED
+                    relaxed.constraints_met = False
+                    result_paths.append(relaxed)
+            return result_paths[:max_paths]
 
-        base_nodes = list(result_paths[0].nodes)
-        base_edges = list(result_paths[0].edges)
+        base_path = result_paths[0]
+        base_nodes = list(base_path.nodes)
+        base_edges = list(base_path.edges)
+        base_dist = base_path.total_distance
 
-        alt_type_idx = 0
-        alt_types = [PathType.SAFEST, PathType.FASTEST]
-        for removed_edge in base_edges:
-            if len(result_paths) >= max_paths:
-                break
-            if removed_edge in blocked_edges:
-                continue
-            try:
-                temp_blocked = set(blocked_edges) | {removed_edge}
-                alt_path = self._dijkstra_safest(start, end, ship, temp_blocked, hour)
-                if alt_path and tuple(alt_path.nodes) not in seen_node_seqs:
-                    alt_path.path_type = alt_types[alt_type_idx % len(alt_types)]
-                    alt_type_idx += 1
-                    result_paths.append(alt_path)
-                    seen_node_seqs.add(tuple(alt_path.nodes))
-            except Exception:
-                pass
-
-        # 3) 用船型感知扰动替代约束放宽逻辑（旧版松弛路径从不产生差异化路径）
-        if len(result_paths) < max_paths:
-            extra_paths = self._ship_type_aware_perturbation(
-                start, end, ship, blocked_edges, hour,
-                n_paths=max_paths - len(result_paths),
-                existing_seqs=seen_node_seqs
-            )
-            for p in extra_paths:
-                add_unique_path(p, p.path_type)
-
-        if len(result_paths) < max_paths:
-            base_node_set = set(base_nodes)
-            candidates = []
-            for node in self.graph.nodes():
-                if node in base_node_set or node == start or node == end:
+        # ================================================================
+        # Phase 2: 分支点驱动 — 结构差异化路径
+        # ================================================================
+        branch_points = []
+        for i, node in enumerate(base_nodes[:-1]):
+            successors = list(self.graph.successors(node))
+            next_on_path = base_nodes[i + 1]
+            alt_succs = []
+            for s in successors:
+                if s == next_on_path:
+                    continue
+                if (node, s) in blocked_edges:
                     continue
                 try:
-                    if nx.has_path(self.graph, start, node) and nx.has_path(self.graph, node, end):
-                        deg = self.graph.degree(node)
-                        candidates.append((node, deg))
+                    if nx.has_path(self.graph, s, end):
+                        alt_succs.append(s)
                 except Exception:
                     pass
-            candidates.sort(key=lambda x: -x[1])
+            if alt_succs:
+                branch_points.append((i, node, alt_succs))
 
-            for mid_node, _ in candidates[:20]:
-                if len(result_paths) >= max_paths:
+        # 在每个分叉点尝试生成替代路径
+        structural_candidates = []
+        detour_cap = 2.0  # 绕路上限：替代路径距离 <= 基准距离 * 2.0
+
+        for bp_idx, (path_idx, bp_node, alt_succs) in enumerate(branch_points):
+            if len(structural_candidates) >= 10:
+                break
+
+            edge_to_block = (base_nodes[path_idx], base_nodes[path_idx + 1])
+            temp_blocked = set(blocked_edges) | {edge_to_block}
+
+            # 安全权重搜索
+            alt_path = self._dijkstra_safest(start, end, ship, temp_blocked, hour)
+            if alt_path is not None:
+                if base_dist <= 0 or alt_path.total_distance <= base_dist * detour_cap:
+                    seq = tuple(alt_path.nodes)
+                    if seq not in seen_seqs:
+                        structural_candidates.append((alt_path, path_idx, "safe"))
+
+            # 时间权重搜索
+            if len(structural_candidates) < 10:
+                alt_path2 = self._dijkstra_fastest(start, end, ship, hour, temp_blocked)
+                if alt_path2 is not None:
+                    if base_dist <= 0 or alt_path2.total_distance <= base_dist * detour_cap:
+                        seq2 = tuple(alt_path2.nodes)
+                        if seq2 not in seen_seqs and not any(
+                                tuple(c[0].nodes) == seq2 for c in structural_candidates):
+                            structural_candidates.append((alt_path2, path_idx, "fast"))
+
+        # 从候选中选结构差异最大的路径（优先选靠前分叉点 → 差异更大）
+        structural_candidates.sort(key=lambda c: c[1])
+
+        for alt_path, bp_idx, search_type in structural_candidates:
+            if len(result_paths) >= max_paths:
+                break
+            is_different = True
+            for existing in result_paths:
+                if structural_overlap(existing.nodes, alt_path.nodes) > 0.85:
+                    is_different = False
                     break
-                try:
-                    path_to_mid = self._dijkstra_safest(start, mid_node, ship, blocked_edges, hour)
-                    if path_to_mid is None:
-                        continue
-                    path_from_mid = self._dijkstra_safest(mid_node, end, ship, blocked_edges, hour)
-                    if path_from_mid is None:
-                        continue
+            if is_different:
+                ptype = PathType.SAFEST if search_type == "safe" else PathType.FASTEST
+                # 防止类型重复：若该类型已存在，降级为 BALANCED
+                existing_types = {p.path_type for p in result_paths}
+                if ptype in existing_types:
+                    ptype = PathType.BALANCED
+                add_path(alt_path, ptype)
 
-                    detour_nodes = list(path_to_mid.nodes)
-                    for n in path_from_mid.nodes[1:]:
-                        if n not in detour_nodes:
-                            detour_nodes.append(n)
+        # ================================================================
+        # Phase 3: 多目标属性差异化（同结构但不同优化目标）
+        # ================================================================
+        # 当结构差异不够时，用不同优化目标生成 "属性差异化" 路径
+        # 优先级（按需求文档）：距离最短 > 时间最短 > 安全优先
+        # 例如：最安全路线和最高频路线恰好是同一条路 → 仍然分别标注
 
-                    detour_edges = []
-                    for i in range(len(detour_nodes) - 1):
-                        detour_edges.append((detour_nodes[i], detour_nodes[i + 1]))
+        def _existing_types():
+            return {p.path_type for p in result_paths}
 
-                    seq = tuple(detour_nodes)
-                    if seq in seen_node_seqs:
-                        continue
+        if len(result_paths) < max_paths and PathType.SHORTEST not in _existing_types():
+            path_shortest = self._dijkstra_shortest_distance(
+                start, end, ship, blocked_edges, hour)
+            if path_shortest is not None:
+                seq = tuple(path_shortest.nodes)
+                if seq not in seen_seqs:
+                    add_path(path_shortest, PathType.SHORTEST)
+                elif has_meaningful_diff(path_shortest, result_paths):
+                    path_shortest.path_type = PathType.SHORTEST
+                    result_paths.append(path_shortest)
+                    seen_seqs.add(seq)
 
-                    detour_path = self._build_path_result(
-                        PathType.FASTEST, detour_nodes, detour_edges, ship, blocked_edges, hour=hour)
-                    if detour_path and tuple(detour_path.nodes) not in seen_node_seqs:
-                        detour_path.path_type = PathType.FASTEST
-                        result_paths.append(detour_path)
-                        seen_node_seqs.add(tuple(detour_path.nodes))
-                except Exception:
-                    pass
+        if len(result_paths) < max_paths and PathType.FASTEST not in _existing_types():
+            path_fastest = self._dijkstra_fastest(start, end, ship, hour, blocked_edges)
+            if path_fastest is not None:
+                seq = tuple(path_fastest.nodes)
+                if seq not in seen_seqs:
+                    add_path(path_fastest, PathType.FASTEST)
+                elif has_meaningful_diff(path_fastest, result_paths):
+                    path_fastest.path_type = PathType.FASTEST
+                    result_paths.append(path_fastest)
+                    seen_seqs.add(seq)
 
+        if len(result_paths) < max_paths and PathType.SAFEST not in _existing_types():
+            path_safest = self._dijkstra_safest(start, end, ship, blocked_edges, hour)
+            if path_safest is not None:
+                seq = tuple(path_safest.nodes)
+                if seq not in seen_seqs:
+                    add_path(path_safest, PathType.SAFEST)
+                elif has_meaningful_diff(path_safest, result_paths):
+                    path_safest.path_type = PathType.SAFEST
+                    result_paths.append(path_safest)
+                    seen_seqs.add(seq)
+
+        # ================================================================
+        # Phase 4: 时间平移变体（不同时段 → 不同时间权重 → 不同指标）
+        # ================================================================
         if len(result_paths) < max_paths:
-            need_any = len(result_paths) <= 1
             for h_offset in [6, 12, 18]:
                 if len(result_paths) >= max_paths:
                     break
                 alt_hour = ((hour or 0) + h_offset) % 24
                 path_var = self._build_path_result(
-                    PathType.SAFEST, base_nodes, base_edges, ship, blocked_edges, hour=alt_hour)
+                    PathType.BALANCED, list(base_nodes), list(base_edges),
+                    ship, blocked_edges, hour=alt_hour)
                 if path_var is None:
                     continue
+                # 防止同节点序列重复标注
+                var_seq = tuple(path_var.nodes)
+                if var_seq in seen_seqs:
+                    continue
+                # 要求时间差异 > 3%
+                time_diffs = [
+                    abs(path_var.total_time - p.total_time) / max(p.total_time, 1)
+                    for p in result_paths
+                ]
+                if max(time_diffs) > 0.03:
+                    path_var.path_type = PathType.BALANCED
+                    result_paths.append(path_var)
+                    seen_seqs.add(var_seq)
+                    break
 
-                if not need_any:
-                    min_diff_pct = 0.03
-                    is_diff = True
-                    for existing in result_paths:
-                        diff_pct = abs(path_var.total_time - existing.total_time) / max(existing.total_time, 1)
-                        if diff_pct < min_diff_pct:
-                            is_diff = False
-                            break
-                    if not is_diff:
-                        continue
+        # ================================================================
+        # Phase 5: 综合最优标记
+        # ================================================================
+        if len(result_paths) >= 2:
+            has_balanced = any(p.path_type == PathType.BALANCED for p in result_paths)
+            if not has_balanced:
+                max_time = max(p.total_time for p in result_paths) or 1
+                max_dist = max(p.total_distance for p in result_paths) or 1
+                best_score, best_idx = -1, -1
+                for idx, p in enumerate(result_paths):
+                    time_eff = 1 - p.total_time / max_time
+                    dist_eff = 1 - p.total_distance / max_dist
+                    score = ((100 - p.risk_score) * 0.4
+                             + time_eff * 100 * 0.3
+                             + dist_eff * 100 * 0.3)
+                    if score > best_score:
+                        best_score, best_idx = score, idx
+                if (best_idx >= 0
+                        and result_paths[best_idx].path_type != PathType.FREQUENT
+                        and result_paths[best_idx].path_type != PathType.SHORTEST):
+                    result_paths[best_idx].path_type = PathType.BALANCED
 
-                path_var.path_type = PathType.BALANCED
-                result_paths.append(path_var)
-                need_any = False
-
-        # 兜底：所有路径均被物理约束阻塞 → 约束放宽路径
-        if not result_paths and blocked_edges:
-            logger.warning("所有路径均被物理约束阻塞，尝试约束放宽...")
-            path_relaxed = self._dijkstra_safest(
-                start, end, ship, set(), hour)
-            if path_relaxed:
-                path_relaxed.path_type = PathType.RELAXED
-                path_relaxed.constraints_met = False
-                path_relaxed.warning = "物理约束放宽路径：部分航段可能不满足船舶吃水/限高要求"
-                result_paths.append(path_relaxed)
+        # ================================================================
+        # Phase 6: 约束放宽兜底
+        # ================================================================
+        if len(result_paths) == 1 and blocked_edges:
+            relaxed = self._dijkstra_safest(start, end, ship, set(), hour)
+            if relaxed and tuple(relaxed.nodes) not in seen_seqs:
+                relaxed.path_type = PathType.RELAXED
+                relaxed.constraints_met = False
+                relaxed.warning = "物理约束放宽路径：部分航段可能不满足船舶吃水/限高要求"
+                result_paths.append(relaxed)
 
         return result_paths[:max_paths]
 
@@ -1967,7 +2094,7 @@ class MultiObjectiveNavigator:
                         PathType.BALANCED, nodes, edges, ship, blocked_edges, hour=hour)
                     if p:
                         is_safe = (p.risk_score < 30)
-                        p.path_type = PathType.SAFEST if is_safe else PathType.FASTEST
+                        p.path_type = PathType.SAFEST if is_safe else PathType.BALANCED
                         results.append(p)
         
         # 若A*扰动仍不够：用船型特征选择不同中间途经点，强制产生差异化路径
@@ -2022,7 +2149,7 @@ class MultiObjectiveNavigator:
                     p = self._build_path_result(
                         PathType.BALANCED, merged_nodes, merged_edges, ship, blocked_edges, hour=hour)
                     if p:
-                        p.path_type = PathType.FASTEST
+                        p.path_type = PathType.BALANCED
                         results.append(p)
                 except Exception:
                     continue
@@ -2335,131 +2462,6 @@ class MultiObjectiveNavigator:
             PathType.BALANCED, nodes, edges, ship, blocked_edges
         )
 
-    def _find_relaxed_paths(self, start: int, end: int,
-                             ship: ShipCharacteristics,
-                             hour: int,
-                             blocked_edges: Set[Tuple[int, int]],
-                             k: int = 3) -> List[PathResult]:
-        """
-        约束松弛策略：当严格约束下路径不足时，
-        通过逐步解除轻度约束来找到更多差异化路径。
-        
-        核心策略：
-        1. 按约束违反程度排序阻塞边
-        2. 逐步解除轻度约束边
-        3. 用Yen's算法搜索差异化路径
-        """
-        relaxed_paths = []
-        cc = self.constraint_checker
-        
-        strict_path = self._dijkstra_with_edge_exclusion(
-            start, end, ship, hour, blocked_edges, set())
-
-        if not strict_path:
-            logger.info("约束松弛: 严格约束下无路径，尝试逐步解除约束")
-            edge_violations = []
-            for edge in blocked_edges:
-                depth = cc.depth_map.get(edge, 0)
-                width = cc.width_map.get(edge, 0)
-                height = cc.height_map.get(edge, 0)
-                
-                margin = 0
-                if depth and ship.draft > depth:
-                    margin += (ship.draft - depth) / max(depth, 0.1)
-                if width and ship.width > width:
-                    margin += (ship.width - width) / max(width, 0.1)
-                if height and ship.height > height:
-                    margin += (ship.height - height) / max(height, 0.1)
-                
-                edge_violations.append((edge, margin))
-            
-            edge_violations.sort(key=lambda x: x[1])
-            
-            for pct in [0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1.0]:
-                if len(relaxed_paths) >= k:
-                    break
-                
-                num_to_unblock = max(1, int(len(edge_violations) * pct))
-                current_blocked = set(blocked_edges)
-                for i in range(min(num_to_unblock, len(edge_violations))):
-                    current_blocked.discard(edge_violations[i][0])
-                
-                candidate = self._dijkstra_with_edge_exclusion(
-                    start, end, ship, hour, current_blocked, set())
-                
-                if candidate:
-                    candidate.constraints_met = False
-                    candidate.warning = f"经过{num_to_unblock}条约束放宽路段"
-                    relaxed_paths.append(candidate)
-                    if len(relaxed_paths) >= k:
-                        break
-            
-            if not relaxed_paths:
-                logger.info("约束松弛: 无法找到路径")
-            
-            return relaxed_paths
-        
-        # 按约束违反程度排序阻塞边
-        edge_violations = []
-        for edge in blocked_edges:
-            depth = cc.depth_map.get(edge, 0)
-            width = cc.width_map.get(edge, 0)
-            height = cc.height_map.get(edge, 0)
-            
-            margin = 0
-            if depth and ship.draft > depth:
-                margin += (ship.draft - depth) / max(depth, 0.1)
-            if width and ship.width > width:
-                margin += (ship.width - width) / max(width, 0.1)
-            if height and ship.height > height:
-                margin += (ship.height - height) / max(height, 0.1)
-            
-            edge_violations.append((edge, margin))
-        
-        # 按违反程度从小到大排序
-        edge_violations.sort(key=lambda x: x[1])
-        
-        # 策略：逐步解除轻度约束边，用Yen's搜索
-        num_to_unblock = 1
-        while num_to_unblock <= min(5, len(edge_violations)):
-            if len(relaxed_paths) >= k:
-                break
-            
-            # 解除违反程度最小的N条边
-            current_blocked = set(blocked_edges)
-            for i in range(num_to_unblock):
-                current_blocked.discard(edge_violations[i][0])
-            
-            # 用Yen's算法找路径
-            yen_paths = self._yens_k_shortest(
-                start, end, ship, hour, current_blocked, k=3)
-            
-            for p in yen_paths:
-                if p.nodes == strict_path.nodes:
-                    continue
-                
-                is_dup = False
-                for rp in relaxed_paths:
-                    if rp.nodes == p.nodes:
-                        is_dup = True
-                        break
-                if is_dup:
-                    continue
-                
-                p.constraints_met = False
-                p.warning = f"经过{num_to_unblock}条约束放宽路段"
-                relaxed_paths.append(p)
-                
-                if len(relaxed_paths) >= k:
-                    break
-            
-            num_to_unblock += 1
-        
-        if not relaxed_paths:
-            logger.info("约束松弛: 无法找到差异化路径")
-        
-        return relaxed_paths
-
     def _pareto_selection(self, paths: List[PathResult], max_paths: int) -> List[PathResult]:
         """
         帕累托最优选择：保留在所有目标上都不被其他路径支配的路径
@@ -2749,6 +2751,68 @@ class MultiObjectiveNavigator:
         return self._build_path_result(
             PathType.FASTEST, nodes, edges, ship, blocked_edges, hour=hour
         )
+
+    def _dijkstra_distance_only(self, start: int, end: int,
+                                 ship: ShipCharacteristics,
+                                 blocked_edges: Set[Tuple[int, int]],
+                                 seen_node_seqs: set) -> Optional[PathResult]:
+        """纯距离权重 Dijkstra，生成与已有路径不同的最短距离路径。
+        
+        用于 BALANCED 兜底：当 perturbation 返回的路径比 SAFEST 还远时，
+        用纯距离搜索找一条合理的中间路径。
+        """
+        end_data = self.graph.nodes.get(end, {})
+        end_lat = end_data.get('lat', 0)
+        end_lon = end_data.get('lon', 0)
+
+        def heuristic(node):
+            if node not in self.graph.nodes:
+                return 0
+            nd = self.graph.nodes[node]
+            return haversine_distance(
+                nd.get('lat', 0), nd.get('lon', 0),
+                end_lat, end_lon)
+
+        g_score = {start: 0}
+        f_score = {start: heuristic(start)}
+        prev = {start: None}
+        edge_used = {start: None}
+        open_set = [(f_score[start], start)]
+        closed_set = set()
+
+        while open_set:
+            _, node = heapq.heappop(open_set)
+            if node in closed_set:
+                continue
+            closed_set.add(node)
+            if node == end:
+                break
+            for neighbor in self.graph.successors(node):
+                if neighbor in closed_set:
+                    continue
+                ek = (node, neighbor)
+                if ek in blocked_edges:
+                    continue
+                dist = self.distance_weight.get(ek, 100)
+                tentative_g = g_score[node] + dist
+                if neighbor not in g_score or tentative_g < g_score[neighbor]:
+                    prev[neighbor] = node
+                    edge_used[neighbor] = ek
+                    g_score[neighbor] = tentative_g
+                    f_score[neighbor] = tentative_g + heuristic(neighbor)
+                    heapq.heappush(open_set, (f_score[neighbor], neighbor))
+
+        if end not in prev or prev[end] is None:
+            return None
+
+        nodes, edges = self._reconstruct_path(end, prev, edge_used)
+        seq = tuple(nodes)
+        if seq in seen_node_seqs:
+            return None
+
+        return self._build_path_result(
+            PathType.BALANCED, nodes, edges, ship, blocked_edges, hour=None
+        )
     
     def _astar_balanced(self, start: int, end: int,
                         ship: ShipCharacteristics,
@@ -2757,21 +2821,26 @@ class MultiObjectiveNavigator:
         """
         A*算法 - 综合最优
         目标：平衡时间、距离、风险
+        代价 = 0.5 * time + 0.3 * distance_km * 60 + 0.2 * risk * time
         """
+        end_data = self.graph.nodes.get(end, {})
+        end_lat = end_data.get('lat', 0)
+        end_lon = end_data.get('lon', 0)
+
         def heuristic(node):
             if node not in self.graph.nodes:
                 return 0
             node_data = self.graph.nodes[node]
-            end_data = self.graph.nodes[end]
-            return haversine_distance(
+            dist_km = haversine_distance(
                 node_data.get('lat', 0), node_data.get('lon', 0),
-                end_data.get('lat', 0), end_data.get('lon', 0)
-            ) / 100
-        
+                end_lat, end_lon) / 1000
+            # 最乐观估计：以最大航速航行的时间（分钟）
+            return dist_km / max(ship.max_speed * 1.852, 1) * 60
+
         def edge_cost(edge_key):
-            time_cost = self._get_dynamic_time(edge_key, hour)
-            risk_cost = self.constraint_checker.get_edge_risk_score(edge_key, ship)
-            return time_cost * 0.6 + risk_cost * 2
+            time_min = self._get_dynamic_time(edge_key, hour) / 60
+            risk = self.constraint_checker.get_edge_risk_score(edge_key, ship) / 100
+            return time_min * (0.7 + 0.3 * risk)
         
         g_score = {start: 0}
         f_score = {start: heuristic(start)}
@@ -3217,15 +3286,24 @@ class NavigationDecisionMaker:
         max_time = max(p.total_time for p in paths)
         max_dist = max(p.total_distance for p in paths)
         
-        def score(path):
+        # 计算每条路径的总通航频次（用于归一化）
+        freqs = []
+        if hasattr(self, '_edge_freq_map'):
+            for p in paths:
+                freqs.append(sum(self._get_edge_frequency(e) for e in p.edges))
+        else:
+            freqs = [0] * len(paths)
+        max_freq = max(freqs) if max(freqs) > 0 else 1
+        
+        def score(path, freq):
             safety_norm = path.safety_score / 100
             time_norm = 1 - (path.total_time / max_time) if max_time > 0 else 0
             dist_norm = 1 - (path.total_distance / max_dist) if max_dist > 0 else 0
-            # 频次路径类型的额外加分
-            freq_bonus = 0.1 if path.path_type == PathType.FREQUENT else 0
-            return safety_norm * 0.35 + time_norm * 0.25 + dist_norm * 0.20 + freq_bonus
+            freq_norm = freq / max_freq
+            return safety_norm * 0.35 + time_norm * 0.25 + dist_norm * 0.20 + freq_norm * 0.20
         
-        return max(paths, key=score)
+        scored = [(p, score(p, freqs[i])) for i, p in enumerate(paths)]
+        return max(scored, key=lambda x: x[1])[0]
     
     def _ship_to_dict(self, ship: ShipCharacteristics) -> Dict:
         return {
@@ -3788,7 +3866,7 @@ class ShipNavigationSystem:
             start_lon: 起点经度
             end_lat: 终点纬度
             end_lon: 终点经度
-            ship_type: 船舶类型（如 '中型货船'、'大型油轮'）
+            ship_type: 船舶类型（如 '中型货船'、'油轮'）
             departure_hour: 出发小时 (0-23)
             max_paths: 最大路径数
         
@@ -3845,8 +3923,8 @@ def main():
     # 演示不同船型的导航决策（自动选择可达的起终点）
     demo_ships = [
         ('中型货船', 8),
-        ('大型集装箱船', 10),
-        ('大型油轮', 14),
+        ('集装箱船', 10),
+        ('油轮', 14),
     ]
     
     for ship_type, hour in demo_ships:

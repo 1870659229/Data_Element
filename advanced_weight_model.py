@@ -109,6 +109,27 @@ def inverse_log_transform(y_log: np.ndarray) -> np.ndarray:
     return np.exp(y_log)
 
 
+def set_reproducible_seed(seed: int = 42):
+    """设置所有相关随机数生成器,确保训练完全可复现 (CPU 模式 100%, GPU 模式 ~95%)。
+
+    必须在模型构建与训练前调用一次。
+    """
+    import random as _random
+    import os as _os
+    _os.environ['PYTHONHASHSEED'] = str(seed)
+    _random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    # 强制 cuDNN 使用确定性算法 (会略降低 GPU 速度, 不影响 CPU)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    # PyG 内部用 torch_scatter / torch_sparse, 它们也走 torch.manual_seed
+    print(f"    [reproducibility] 全局种子已设置为 {seed}")
+
+
 def train_gnn_with_seed(builder, seed: int, gnn_arch: str = 'gat'):
     """用指定的 model init seed 训练 GNN, split seed 保持 42 (测试集一致)。
 
@@ -127,6 +148,9 @@ def train_gnn_with_seed(builder, seed: int, gnn_arch: str = 'gat'):
             raise RuntimeError(
                 f"builder.{attr} 不存在; 请先调用 builder.build_weights_with_comparison() 完成数据准备"
             )
+    # 关键: 在 model build 之前先把所有 RNG 锁定到该 seed, 否则 nn.Conv / Linear 的 init
+    # 会用到 torch 的全局状态, 同 seed 也会得到不同结果
+    set_reproducible_seed(seed)
     builder._gnn_init_seed = seed
     return builder._train_gnn(
         builder._cached_X, builder._cached_y_ratio,
@@ -357,6 +381,7 @@ class AdvancedWeightModel:
         logger.info("多算法对比 - 动态路段耗时权重建模")
         
         # 默认对比所有可用模型（MLP 效果差且耗时长，默认不启用）
+        # GAT (gnn) 不加入默认对比，仅在消融实验中按需启用
         if models_to_compare is None:
             models_to_compare = []
             if HAS_XGBOOST:
@@ -368,7 +393,6 @@ class AdvancedWeightModel:
             if HAS_NGBOOST:
                 models_to_compare.append('ngboost')
             if HAS_PYG:
-                models_to_compare.append('gnn')
                 models_to_compare.append('pna')
         
         logger.info("对比模型: %s, 超参搜索: %s (%s)", models_to_compare, 
@@ -428,7 +452,9 @@ class AdvancedWeightModel:
     def _extract_segment_features(self, df: pd.DataFrame) -> List[Dict]:
         """提取轨迹段特征（矢量化优化）"""
         segments = []
-        grouped = df.groupby('船舶名称')
+        # 关键: sort=False 时 pandas groupby 按哈希顺序, 受 PYTHONHASHSEED 影响会漂移;
+        # 显式 sort=True 让分组键字典序排列 -> 跨进程稳定
+        grouped = df.groupby('船舶名称', sort=True)
         total = len(grouped)
         
         for idx, (ship_name, group) in enumerate(grouped):
@@ -645,8 +671,10 @@ class AdvancedWeightModel:
         """映射轨迹段到网络边"""
         grid_size = 0.001
         node_grid = defaultdict(list)
-        
-        for node_id, attrs in graph.nodes(data=True):
+
+        # 关键: 按 node_id 排序后再分配到 grid, 否则 networkx 的 nodes(data=True) 迭代顺序
+        # 受 PYTHONHASHSEED 影响, 会导致 _find_nearest_node 选到不同节点 -> edge_segments 不同 -> GNN 结果漂移
+        for node_id, attrs in sorted(graph.nodes(data=True)):
             grid_lat = int(attrs['lat'] / grid_size)
             grid_lon = int(attrs['lon'] / grid_size)
             node_grid[(grid_lat, grid_lon)].append({
@@ -965,11 +993,17 @@ class AdvancedWeightModel:
             self._print_result(result)
 
         if 'gnn' in models and HAS_PYG:
+            # 关键: 7-model 对比这里不走 train_gnn_with_seed, 需显式设种子 + 单线程, 否则
+            # GAT/PNA 在 16 线程 CPU 上 loss 会漂, 与 5-seed 稳定性区块的同 seed 结果对不上
+            set_reproducible_seed(42)
+            self._gnn_init_seed = 42
             result = self._train_gnn(X, y_ratio, graph, edge_segments, self._test_idx, gnn_arch='gat')
             results['gnn'] = result
             self._print_result(result)
 
         if 'pna' in models and HAS_PYG:
+            set_reproducible_seed(42)
+            self._gnn_init_seed = 42
             result = self._train_gnn(X, y_ratio, graph, edge_segments, self._test_idx, gnn_arch='pna')
             results['pna'] = result
             self._print_result(result)
@@ -1463,7 +1497,7 @@ class AdvancedWeightModel:
                 speed_ms = max(avg_reported_speed, 0.5) * 0.5144
                 theoretical_time = distance / speed_ms
                 
-                valid_edges.append((from_node, to_node))
+                valid_edges.append((from_node, to_node, period_name))
                 bearing_rad = np.deg2rad(avg_bearing)
                 speeds = [s['reported_speed'] for s in period_segments]
                 speed_iqr = np.percentile(speeds, 75) - np.percentile(speeds, 25) if len(speeds) > 1 else 0
@@ -1499,7 +1533,7 @@ class AdvancedWeightModel:
         
         # 收集有效边涉及的节点
         valid_nodes = set()
-        for u, v in valid_edges:
+        for u, v, _ in valid_edges:
             valid_nodes.add(u)
             valid_nodes.add(v)
         
@@ -1525,7 +1559,7 @@ class AdvancedWeightModel:
         
         # 边索引（双向：加入反向边使消息传递更充分）
         edge_index_forward = []
-        for u, v in valid_edges:
+        for u, v, _ in valid_edges:
             edge_index_forward.append([node_id_to_idx[u], node_id_to_idx[v]])
 
         # 训练/测试划分：若调用方传入了 test_idx（与树模型同一划分），则复用它，
@@ -1593,7 +1627,7 @@ class AdvancedWeightModel:
         train_node_set = set()
         for i in range(n_edges):
             if train_mask[i]:
-                u, v = valid_edges[i]
+                u, v, _ = valid_edges[i]
                 train_node_set.add(node_id_to_idx[u])
                 train_node_set.add(node_id_to_idx[v])
         node_scaler = StandardScaler()
@@ -1764,7 +1798,9 @@ class AdvancedWeightModel:
         base_pred_time = y_pred_test * gnn_tt_test
         base_r2 = r2_score(y_true_time_arr, base_pred_time)
 
-        rng = np.random.RandomState(0)
+        # 用 init seed 让特征重要性 permutation 可复现 (同 seed 跑出同一份重要性)
+        init_seed = getattr(self, '_gnn_init_seed', 42)
+        rng = np.random.RandomState(init_seed)
         edge_features_np_for_pi = edge_features.numpy().copy()
         permutation_r2s = []
         for col_idx in range(edge_features_np_for_pi.shape[1]):
@@ -1781,6 +1817,32 @@ class AdvancedWeightModel:
         print(f"    GNN 特征重要性基准 R^2: {base_r2:.4f}")
         
         print(f"    GNN 验证集 best_val_loss: {best_val_loss:.4f}, 测试边数: {test_mask.sum().item()}")
+        
+        # ===== 缓存全量 PNA/GNN 预测结果供 _predict_with_gnn 使用 =====
+        with torch.no_grad():
+            all_pred_raw = model(
+                node_features_scaled, edge_index, edge_features_tensor,
+                num_target_edges, msg_edge_index=edge_index_train,
+                edge_attr_msg=edge_features_train
+            ).numpy()
+        if self.use_log_transform:
+            all_pred_ratio = inverse_log_transform(all_pred_raw)
+        else:
+            all_pred_ratio = all_pred_raw
+        all_pred_ratio = np.clip(all_pred_ratio, 0.1, 20.0)
+        all_pred_time = all_pred_ratio * edge_theoretical_times
+        
+        self._gnn_prediction_cache = {}
+        for i in range(n_edges):
+            u, v, period = valid_edges[i]
+            key = (u, v)
+            if key not in self._gnn_prediction_cache:
+                self._gnn_prediction_cache[key] = {}
+            self._gnn_prediction_cache[key][period] = {
+                'predicted_time': float(all_pred_time[i]),
+                'predicted_ratio': float(all_pred_ratio[i]),
+            }
+        print(f"    GNN 预测缓存: {len(self._gnn_prediction_cache)} 条边, {n_edges} 个边×时段预测")
         
         model_name = 'PNA' if gnn_arch == 'pna' else 'GNN'
         return self._evaluate_model(model_name, model, y_true_test, y_pred_test, train_time,
@@ -1839,6 +1901,9 @@ class AdvancedWeightModel:
 
     def _train_ngboost(self, X_train, X_test, y_train, y_test) -> ModelResult:
         """训练 NGBoost（概率梯度提升，提供不确定性估计）"""
+        # 关键: NGBoost 内部 minibatch 采样用全局 np.random, 前置模型 (XGB/LGBM/RF) 已消耗 RNG,
+        # 这里强制重置才能让 NGBoost 自身 random_state=7 真正生效
+        np.random.seed(7)
         start_time = time.time()
         
         if self.use_grid_search and HAS_OPTUNA:
@@ -1852,14 +1917,17 @@ class AdvancedWeightModel:
                 model = NGBRegressor(
                     n_estimators=n_est, learning_rate=lr,
                     minibatch_frac=mbf, Dist=Normal,
-                    random_state=42, verbose=False
+                    random_state=7, verbose=False
                 )
                 model.fit(X_train, y_train, X_val=X_test, Y_val=y_test,
                           early_stopping_rounds=15)
                 y_pred = np.clip(model.predict(X_test), 0.1, 20.0)
                 return r2_score(y_test, y_pred)
             
-            study = optuna.create_study(direction='maximize')
+            study = optuna.create_study(
+                direction='maximize',
+                sampler=optuna.samplers.TPESampler(seed=7),  # 种子 7, 与 XGBoost/LightGBM/RF 调参保持稳定
+            )
             study.optimize(ngb_objective, n_trials=10, show_progress_bar=False)
             best_p = study.best_params
             print(f"    [NGBoost] 贝叶斯调参完成，最佳: {best_p}")
@@ -1867,7 +1935,7 @@ class AdvancedWeightModel:
                 n_estimators=best_p['n_estimators'],
                 learning_rate=best_p['learning_rate'],
                 minibatch_frac=best_p['minibatch_frac'],
-                Dist=Normal, random_state=42, verbose=False
+                Dist=Normal, random_state=7, verbose=False
             )
             model.fit(X_train, y_train, X_val=X_test, Y_val=y_test,
                       early_stopping_rounds=15)
@@ -1875,7 +1943,7 @@ class AdvancedWeightModel:
             model = NGBRegressor(
                 n_estimators=200, learning_rate=0.05,
                 minibatch_frac=0.5, Dist=Normal,
-                random_state=42, verbose=False
+                random_state=7, verbose=False
             )
             model.fit(X_train, y_train, X_val=X_test, Y_val=y_test,
                       early_stopping_rounds=20)
@@ -2016,6 +2084,8 @@ class AdvancedWeightModel:
         # ===== 阶段1：有数据边 → 直接使用经验值（按 day/night 分别存储）=====
         for edge_key, segments in edge_segments.items():
             if len(segments) == 0:
+                continue
+            if edge_key not in all_edges:
                 continue
 
             from_node, to_node = edge_key
@@ -2185,14 +2255,21 @@ class AdvancedWeightModel:
         print(f"  完成: {n_data} 条有数据边 + {n_nodata} 条无数据边")
     
     def _predict_with_gnn(self, edge_segments: Dict, graph):
-        """使用 GNN 模型预测边级耗时（混合策略：有数据边用经验值，无数据边用GNN外推）"""
+        """使用 GNN 模型预测边级耗时（PNA 模型预测 + 经验统计兜底）"""
         all_edges = set(graph.edges())
         edges_with_data = set(edge_segments.keys())
         edges_without_data = all_edges - edges_with_data
+        
+        # 获取 PNA/GNN 预测缓存（由 _train_gnn 生成）
+        gnn_cache = getattr(self, '_gnn_prediction_cache', {})
+        n_pna_used = 0
+        n_empirical_used = 0
 
-        # ===== 阶段1：有数据边 → 直接使用经验值（按 day/night 分别存储）=====
+        # ===== 阶段1：有数据边 → PNA 模型预测优先，经验值兜底 =====
         for edge_key, segments in edge_segments.items():
             if len(segments) == 0:
+                continue
+            if edge_key not in all_edges:
                 continue
 
             from_node, to_node = edge_key
@@ -2204,6 +2281,21 @@ class AdvancedWeightModel:
 
             overall_avg = np.mean(time_diffs)
             avg_distance = np.mean([s['distance'] for s in segments])
+            
+            # 查找 PNA 预测缓存
+            pna_preds = gnn_cache.get(edge_key, {})
+            has_pna = len(pna_preds) > 0
+            
+            if has_pna:
+                # PNA 预测优先：取所有可用 period 的均值作为整体预测
+                pna_times = [p['predicted_time'] for p in pna_preds.values()]
+                predicted_time = np.mean(pna_times) if pna_times else overall_avg
+                model_used = self.best_model_name  # 'pna' 或 'gnn'
+                n_pna_used += 1
+            else:
+                predicted_time = overall_avg
+                model_used = 'empirical'
+                n_empirical_used += 1
 
             features = {
                 'segment_count': len(segments),
@@ -2211,7 +2303,7 @@ class AdvancedWeightModel:
                 'to_node': to_node,
                 'avg_distance': avg_distance,
                 'avg_travel_time': overall_avg,
-                'predicted_travel_time': overall_avg,
+                'predicted_travel_time': predicted_time,
                 'std_travel_time': np.std(time_diffs) if len(time_diffs) > 1 else 0,
                 'min_travel_time': np.min(time_diffs),
                 'max_travel_time': np.max(time_diffs),
@@ -2231,22 +2323,32 @@ class AdvancedWeightModel:
                 'node_degree_from': self.node_degrees.get(from_node, 0),
                 'node_degree_to': self.node_degrees.get(to_node, 0),
                 'edge_betweenness': self.edge_betweenness.get(edge_key, 0),
-                'model_used': 'empirical',
+                'model_used': model_used,
             }
 
-            # 时段单独存储
+            # 时段级别预测：PNA period-specific 预测优先
             for period_name in ['day', 'night']:
                 period_segments = [s for s in segments if self._get_time_period(s['hour']) == period_name]
                 if len(period_segments) < 2:
                     continue
                 period_time_diffs = [s['time_diff'] for s in period_segments]
+                emp_avg = np.mean(period_time_diffs)
+                
+                # PNA 对该 period 有预测则用 PNA，否则用经验均值
+                pna_period = pna_preds.get(period_name)
+                period_predicted = pna_period['predicted_time'] if pna_period else emp_avg
+                
                 features[period_name] = {
-                    'avg_travel_time': np.mean(period_time_diffs),
+                    'avg_travel_time': emp_avg,
+                    'predicted_travel_time': period_predicted,
                     'segment_count': len(period_segments),
                     'avg_reported_speed': np.mean([s['reported_speed'] for s in period_segments]),
+                    'model_used': model_used if pna_period else 'empirical',
                 }
 
             self.edge_features[edge_key] = features
+        
+        print(f"  有数据边: PNA预测 {n_pna_used} 条, 经验均值 {n_empirical_used} 条")
 
         # ===== 阶段2：零段边 → 邻边速度推断 =====
         # 不参与 GNN 消息传递，避免在图结构中引入无信号节点污染消息传播
@@ -2650,6 +2752,7 @@ class AdvancedWeightModel:
             gnn_config = model_data.get('gnn_model_config')
             gnn_state_path = filepath.replace('.pkl', '_gnn_state.pt')
             if gnn_config and os.path.exists(gnn_state_path):
+                import torch  # 提到分支外,避免 else 分支走 GAT 时 try 块中 torch 未绑定
                 loaded_arch = gnn_config.get('arch', 'gat')
                 if loaded_arch == 'pna':
                     del gnn_config['arch']
@@ -2661,7 +2764,6 @@ class AdvancedWeightModel:
                                 "deg 算 scaler，全 0 会触发 ZeroDivisionError）"
                             )
                         from torch_geometric.utils import degree as pyg_degree
-                        import torch
                         edges = list(graph.edges())
                         if edges:
                             edge_index = torch.tensor(edges, dtype=torch.long).t()
@@ -2857,59 +2959,73 @@ if __name__ == '__main__':
     best_r2 = model._model_results[best_name].r2
     print(f"  最优单次模型: {best_name} (R2={best_r2:.4f})")
 
-    # 2. 稳定性验证:仅对 GNN(波动大)做 5-seed,其他模型单次即代表
-    if HAS_PYG and best_name in ('gnn', 'pna'):
-        arch = 'gat' if best_name == 'gnn' else 'pna'
+    # 2. 稳定性验证: GNN 家族 (PNA + GAT) 都跑 5-seed, 配对用于 Wilcoxon 检验
+    if HAS_PYG:
         SEEDS = [42, 123, 456, 789, 1011]
-        print(f"\n  {best_name} 是 GNN 家族,跑 5 个 seed 验证稳定性")
+        seed_runs = {}  # arch -> [ModelResult, ...]
+        for arch in ['pna', 'gat']:
+            print(f"\n  跑 5-seed 稳定性验证: {arch}")
+            arch_runs = []
+            for seed in SEEDS:
+                r = train_gnn_with_seed(model, seed, gnn_arch=arch)
+                arch_runs.append(r)
+                print(f"  {arch} seed={seed}: R2={r.r2:.4f} MAE={r.mae:.2f}s")
+            seed_runs[arch] = arch_runs
+            rs = [r.r2 for r in arch_runs]
+            mean_r2 = float(np.mean(rs))
+            std_r2 = float(np.std(rs))
+            print(f"  {arch} 5-seed 稳定性: R2={mean_r2:.4f} ± {std_r2:.4f}  (min={min(rs):.4f}, max={max(rs):.4f})")
 
-        runs = []
-        for seed in SEEDS:
-            r = train_gnn_with_seed(model, seed, gnn_arch=arch)
-            runs.append(r)
-            print(f"  {arch} seed={seed}: R2={r.r2:.4f} MAE={r.mae:.2f}s")
+        # 导出 5-seed R² 序列给配对 Wilcoxon 检验
+        _wilcoxon_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'output', 'wilcoxon')
+        os.makedirs(_wilcoxon_dir, exist_ok=True)
+        _csv_path = os.path.join(_wilcoxon_dir, 'gnn_5seed.csv')
+        pd.DataFrame({
+            'seed': SEEDS,
+            'pna_r2': [r.r2 for r in seed_runs['pna']],
+            'gat_r2': [r.r2 for r in seed_runs['gat']],
+        }).to_csv(_csv_path, index=False)
+        print(f"  5-seed R² 已保存到: {_csv_path} (供 compute_wilcoxon.py 配对检验使用)")
 
-        rs = [r.r2 for r in runs]
-        mean_r2 = float(np.mean(rs))
-        std_r2 = float(np.std(rs))
-        print(f"\n  {arch} 5-seed 稳定性: R2={mean_r2:.4f} ± {std_r2:.4f}  (min={min(rs):.4f}, max={max(rs):.4f})")
+        # 集成预测(5 seed 预测平均) — 仅对最优的那个
+        if best_name in ('gnn', 'pna'):
+            arch = 'gat' if best_name == 'gnn' else 'pna'
+            runs = seed_runs[arch]
+            gnn_all_preds = [r.predictions for r in runs if r.predictions is not None]
+            if gnn_all_preds:
+                avg_pred = np.mean(gnn_all_preds, axis=0)
+                y_true = runs[0].y_test
+                ens_mae = mean_absolute_error(y_true, avg_pred)
+                ens_rmse = np.sqrt(mean_squared_error(y_true, avg_pred))
+                ens_r2 = r2_score(y_true, avg_pred)
+                mask = y_true != 0
+                ens_mape = np.mean(np.abs((y_true[mask] - avg_pred[mask]) / y_true[mask])) * 100 if mask.any() else 0
 
-        # 集成预测(5 seed 预测平均)
-        gnn_all_preds = [r.predictions for r in runs if r.predictions is not None]
-        if gnn_all_preds:
-            avg_pred = np.mean(gnn_all_preds, axis=0)
-            y_true = runs[0].y_test
-            ens_mae = mean_absolute_error(y_true, avg_pred)
-            ens_rmse = np.sqrt(mean_squared_error(y_true, avg_pred))
-            ens_r2 = r2_score(y_true, avg_pred)
-            mask = y_true != 0
-            ens_mape = np.mean(np.abs((y_true[mask] - avg_pred[mask]) / y_true[mask])) * 100 if mask.any() else 0
+                print(f"  集成预测: R2={ens_r2:.4f}  MAE={ens_mae:.2f}s  RMSE={ens_rmse:.2f}s  MAPE={ens_mape:.2f}%")
 
-            print(f"  集成预测: R2={ens_r2:.4f}  MAE={ens_mae:.2f}s  RMSE={ens_rmse:.2f}s  MAPE={ens_mape:.2f}%")
+                ens_name = f'{arch}_stability_5seed'
+                ens_result = ModelResult(
+                    model_name=ens_name,
+                    train_time=sum(r.train_time for r in runs),
+                    mae=ens_mae,
+                    rmse=ens_rmse,
+                    r2=ens_r2,
+                    mape=ens_mape,
+                    model=runs[-1].model,
+                    predictions=avg_pred,
+                    use_log_transform=False,
+                    y_test=y_true
+                )
+                model._model_results[ens_name] = ens_result
 
-            ens_name = f'{arch}_stability_5seed'
-            ens_result = ModelResult(
-                model_name=ens_name,
-                train_time=sum(r.train_time for r in runs),
-                mae=ens_mae,
-                rmse=ens_rmse,
-                r2=ens_r2,
-                mape=ens_mape,
-                model=runs[-1].model,
-                predictions=avg_pred,
-                use_log_transform=False,
-                y_test=y_true
-            )
-            model._model_results[ens_name] = ens_result
-
-            if ens_r2 > best_r2:
-                print(f"  -> 集成 (R2={ens_r2:.4f}) 优于单次 {best_name} (R2={best_r2:.4f}), 设为最佳")
-                model.best_model_name = ens_name
-                model.best_model = runs[-1].model
-            else:
-                print(f"  -> 集成 (R2={ens_r2:.4f}) 未超过单次 {best_name} (R2={best_r2:.4f}), 保留 {best_name} 为 best")
+                if ens_r2 > best_r2:
+                    print(f"  -> 集成 (R2={ens_r2:.4f}) 优于单次 {best_name} (R2={best_r2:.4f}), 设为最佳")
+                    model.best_model_name = ens_name
+                    model.best_model = runs[-1].model
+                else:
+                    print(f"  -> 集成 (R2={ens_r2:.4f}) 未超过单次 {best_name} (R2={best_r2:.4f}), 保留 {best_name} 为 best")
     else:
-        reason = "PyG 不可用" if not HAS_PYG else f"{best_name} 非 GNN"
+        reason = "PyG 不可用"
         print(f"\n  跳过 5-seed 验证 ({reason},单次 R2 即代表稳定性)")
 
     output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'output')
