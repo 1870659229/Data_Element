@@ -52,7 +52,7 @@ def nav_system():
 def _build_reachable_od_pool(graph, rng, target: int = 200, max_scan: int = 600):
     """在最大 WCC 内扫一组已知可达的 (start, end) 对，供随机采样复用。
 
-    图是稀疏 DAG（1589 节点 / 2665 边），随机抽样 100 对中可达仅 1 对，
+    图是稀疏 DAG（416 节点 / 966 边），随机抽样 100 对中可达仅 1 对，
     因此必须预先发现可达对，再从中随机抽取。
     """
     import networkx as nx
