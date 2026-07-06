@@ -52,6 +52,39 @@ class TopologyVisualizer:
         pos = {}
         for node_id, attrs in graph.nodes(data=True):
             pos[node_id] = (attrs['lon'], attrs['lat'])
+
+        # 三层底图: 淡蓝水面 + 浅灰陆地 + 深灰岸线
+        try:
+            import geopandas as gpd
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            land_shp = os.path.join(base_dir, 'Data', 'shapefiles', 'ne_10m_land.shp')
+            coastline_shp = os.path.join(base_dir, 'Data', 'shapefiles', 'ne_10m_coastline.shp')
+
+            all_lons = [p[0] for p in pos.values()]
+            all_lats = [p[1] for p in pos.values()]
+            pad_lon = (max(all_lons) - min(all_lons)) * 0.08
+            pad_lat = (max(all_lats) - min(all_lats)) * 0.08
+            lon_min, lon_max = min(all_lons) - pad_lon, max(all_lons) + pad_lon
+            lat_min, lat_max = min(all_lats) - pad_lat, max(all_lats) + pad_lat
+
+            # 1. 淡蓝水面 (axes 背景色)
+            ax.set_facecolor('#eef5fa')
+
+            # 2. 浅灰陆地填充
+            if os.path.exists(land_shp):
+                land = gpd.read_file(land_shp)
+                land.plot(ax=ax, color='#f0ebe0', edgecolor='none', zorder=0)
+
+            # 3. 深灰岸线
+            if os.path.exists(coastline_shp):
+                coastline = gpd.read_file(coastline_shp)
+                coastline.plot(ax=ax, color='#5a5a5a', linewidth=0.7, zorder=1)
+
+            ax.set_xlim(lon_min, lon_max)
+            ax.set_ylim(lat_min, lat_max)
+        except Exception:
+            pass
+
         node_colors = []
         type_colors = {
             'turn_point': '#FF6B6B', 'bifurcation_point': '#4ECDC4',
@@ -78,8 +111,8 @@ class TopologyVisualizer:
         edge_weights = [attrs.get('weight', 1) for _, _, attrs in graph.edges(data=True)]
         max_weight = max(edge_weights) if edge_weights else 1
         edge_widths = [max(self.config['edge_width'] * (w / max_weight), 0.6) for w in edge_weights]
-        nx.draw_networkx_edges(graph, pos, ax=ax, width=edge_widths, alpha=0.4,
-                               arrows=True, arrowsize=10, edge_color='#666666')
+        nx.draw_networkx_edges(graph, pos, ax=ax, width=edge_widths, alpha=0.55,
+                               arrows=True, arrowsize=10, edge_color='#555555')
         nx.draw_networkx_nodes(graph, pos, ax=ax, node_color=node_colors,
                                node_size=node_sizes, alpha=0.9, edgecolors='#333', linewidths=0.5)
         # 用 ax.scatter 代理让图例能拿到正确 label (LineCollection 在某些 matplotlib 版本不写 legend)
@@ -90,8 +123,8 @@ class TopologyVisualizer:
             for nt in present_types
         ]
         # 起终点添加灰色 (背景图) 图例
-        legend_handles.append(plt.Line2D([], [], color='#666666', linewidth=1.5,
-                                          alpha=0.4, label='航道连接'))
+        legend_handles.append(plt.Line2D([], [], color='#555555', linewidth=1.5,
+                                          alpha=0.6, label='航道连接'))
         ax.legend(handles=legend_handles, loc='best', fontsize=9, framealpha=0.9)
         ax.set_xlabel('经度')
         ax.set_ylabel('纬度')
@@ -330,12 +363,56 @@ class TopologyVisualizer:
         lons = merged['lon'].values
         lats = merged['lat'].values
         weights = merged['weight'].values
-        grid_lon = np.linspace(lons.min(), lons.max(), 200)
-        grid_lat = np.linspace(lats.min(), lats.max(), 200)
+
+        # 三层底图: 淡蓝水面 + 浅灰陆地 + 深灰岸线
+        try:
+            import geopandas as gpd
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            land_shp = os.path.join(base_dir, 'Data', 'shapefiles', 'ne_10m_land.shp')
+            coastline_shp = os.path.join(base_dir, 'Data', 'shapefiles', 'ne_10m_coastline.shp')
+
+            pad_lon = (lons.max() - lons.min()) * 0.08
+            pad_lat = (lats.max() - lats.min()) * 0.08
+            lon_min, lon_max = lons.min() - pad_lon, lons.max() + pad_lon
+            lat_min, lat_max = lats.min() - pad_lat, lats.max() + pad_lat
+
+            # 1. 淡蓝水面
+            ax.set_facecolor('#eef5fa')
+
+            # 2. 浅灰陆地填充
+            if os.path.exists(land_shp):
+                land = gpd.read_file(land_shp)
+                land.plot(ax=ax, color='#f0ebe0', edgecolor='none', zorder=0)
+
+            # 3. 深灰岸线
+            if os.path.exists(coastline_shp):
+                coastline = gpd.read_file(coastline_shp)
+                coastline.plot(ax=ax, color='#5a5a5a', linewidth=0.7, zorder=1)
+
+            ax.set_xlim(lon_min, lon_max)
+            ax.set_ylim(lat_min, lat_max)
+        except Exception:
+            pass
+
+        # 高斯 KDE 密度热力图 (更自然, 无三角插值伪影)
+        from scipy.stats import gaussian_kde
+        xy = np.vstack([lons, lats])
+        kde = gaussian_kde(xy, weights=weights, bw_method=0.25)
+
+        grid_lon = np.linspace(lons.min(), lons.max(), 300)
+        grid_lat = np.linspace(lats.min(), lats.max(), 300)
         grid_x, grid_y = np.meshgrid(grid_lon, grid_lat)
-        grid_z = griddata((lons, lats), weights, (grid_x, grid_y), method='linear')
-        im = ax.contourf(grid_x, grid_y, grid_z, levels=20, cmap='YlOrRd', alpha=0.8)
-        ax.scatter(lons, lats, c='navy', s=5, alpha=0.3, zorder=2)
+        grid_z = kde(np.vstack([grid_x.ravel(), grid_y.ravel()])).reshape(grid_x.shape)
+
+        # 归一化到频次量级显示
+        grid_z = grid_z / grid_z.max() * weights.max()
+
+        # 低密度区设为透明, 让底图透出来
+        threshold = grid_z.max() * 0.02
+        grid_z_masked = np.ma.masked_where(grid_z < threshold, grid_z)
+
+        im = ax.contourf(grid_x, grid_y, grid_z_masked, levels=25, cmap='YlOrRd', alpha=0.6, zorder=2)
+        ax.scatter(lons, lats, c='#1a237e', s=4, alpha=0.4, zorder=3, edgecolors='none')
         plt.colorbar(im, ax=ax, label='通行频次')
         ax.set_xlabel('经度')
         ax.set_ylabel('纬度')
@@ -347,25 +424,60 @@ class TopologyVisualizer:
             logger.info("热力图已保存: %s", output_path)
         plt.close()
 
-    def plot_path_comparison(self, graph, paths_data, output_path: str = None):
+    def plot_path_comparison(self, graph, paths_data, output_path: str = None,
+                             topo_edge_count: int = None):
         """多目标路径叠加对比图
 
         注: 选路逻辑 (4 组分位节点 start/q1/q2/q3/end) 由
         scripts/generate_extra_figures.py 第 113-127 行决定, 此函数只负责绘图样式.
+
+        Args:
+            topo_edge_count: 拓扑有向边数（来自 topology_edges.csv），
+                             用于标题显示；默认用 graph.number_of_edges()
         """
         fig, ax = plt.subplots(figsize=(14, 9), facecolor='white')
-        ax.set_facecolor('#F5F7FA')  # 浅灰蓝底色 (海图风格)
+
+        # 三层底图: 淡蓝水面 + 浅灰陆地 + 深灰岸线
+        try:
+            import geopandas as gpd
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            land_shp = os.path.join(base_dir, 'Data', 'shapefiles', 'ne_10m_land.shp')
+            coastline_shp = os.path.join(base_dir, 'Data', 'shapefiles', 'ne_10m_coastline.shp')
+
+            all_lons = [d.get('lon', 0) for n, d in graph.nodes(data=True)]
+            all_lats = [d.get('lat', 0) for n, d in graph.nodes(data=True)]
+            pad_lon = (max(all_lons) - min(all_lons)) * 0.08
+            pad_lat = (max(all_lats) - min(all_lats)) * 0.08
+            lon_min, lon_max = min(all_lons) - pad_lon, max(all_lons) + pad_lon
+            lat_min, lat_max = min(all_lats) - pad_lat, max(all_lats) + pad_lat
+
+            ax.set_facecolor('#eef5fa')
+
+            if os.path.exists(land_shp):
+                land = gpd.read_file(land_shp)
+                land.plot(ax=ax, color='#f0ebe0', edgecolor='none', zorder=0)
+
+            if os.path.exists(coastline_shp):
+                coastline = gpd.read_file(coastline_shp)
+                coastline.plot(ax=ax, color='#5a5a5a', linewidth=0.7, zorder=1)
+
+            ax.set_xlim(lon_min, lon_max)
+            ax.set_ylim(lat_min, lat_max)
+        except Exception:
+            ax.set_facecolor('#F5F7FA')
+            pass
+
         pos = {n: (d.get('lon', 0), d.get('lat', 0)) for n, d in graph.nodes(data=True)}
 
         path_colors = {
             'frequent': '#2196F3', 'safest': '#4CAF50',
-            'fastest': '#FF9800', 'balanced': '#9C27B0',
-            'relaxed': '#F44336'
+            'fastest': '#FF9800', 'shortest': '#E91E63',
+            'balanced': '#9C27B0', 'relaxed': '#F44336'
         }
         path_labels = {
-            'frequent': '通航频次最高', 'safest': '安全优先',
-            'fastest': '时间最短', 'balanced': '综合最优',
-            'relaxed': '约束放宽'
+            'frequent': '频次优先', 'safest': '安全优先',
+            'fastest': '时间最短', 'shortest': '距离最短',
+            'balanced': '综合最优', 'relaxed': '约束放宽'
         }
 
         # ---- 1) 底层: 全网背景航道 (浅灰半透明) ----
@@ -508,9 +620,10 @@ class TopologyVisualizer:
                             edgecolor='black', linewidth=0.6))
 
         # ---- 10) 标题 ----
+        edge_display = topo_edge_count if topo_edge_count is not None else graph.number_of_edges()
         ax.set_title(
             f'多目标路径规划对比（{graph.number_of_nodes()} 节点 / '
-            f'{graph.number_of_edges()} 边 · 4 种策略生成的差异化路径）',
+            f'{edge_display} 边 · 4 种策略生成的差异化路径）',
             fontsize=14, fontweight='bold', pad=14, color='#1A237E')
 
         plt.tight_layout()
@@ -539,7 +652,7 @@ def visualize_routes(G: nx.DiGraph, paths: list, output_path: str,
     nx.draw_networkx_nodes(G, pos, node_size=3, node_color='lightblue', alpha=0.3, ax=ax)
     
     colors = ['#E53935', '#1E88E5', '#43A047', '#FB8C00', '#8E24AA']
-    labels = ['最短路径', '最快路径', '综合最优', '安全优先', '备选路径']
+    labels = ['频次优先', '距离最短', '时间最短', '安全优先', '综合最优']
     
     for i, path_nodes in enumerate(paths[:5]):
         color = colors[i % len(colors)]

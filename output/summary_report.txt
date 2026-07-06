@@ -1,7 +1,7 @@
 ================================================================================
 航道拓扑节点网络提取系统 - 汇总报告
 ================================================================================
-生成时间: 2026-06-18 12:18:05
+生成时间: 2026-07-04 13:18:46
 
 --------------------------------------------------------------------------------
 【任务1 - 数据预处理】
@@ -55,108 +55,117 @@
 【任务6 - 可视化】
 --------------------------------------------------------------------------------
   状态: 完成
-  生成图片数: 41
+  生成图片数: 50
     - algorithm_benchmark.png
     - architecture_overview.png
     - carbon_savings.png
     - cluster_comparison.png
     - code_structure.png
     - config_example.png
+    - connectivity_wcc.png
     - constraint_violation.png
     - constraint_visualization.png
+    - data_fusion_diagram.png
     - data_overview.png
+    - data_pipeline_flow.png
     - data_potential_r2.png
+    - diff_routes.png
+    - eda_correlation_heatmap.png
+    - eda_ship_statistics.png
+    - eda_spatial_heatmap.png
+    - eda_speed_distribution.png
+    - eda_temporal_pattern.png
     - failure_cases.png
     - feature_importance.png
     - feature_importance_6period_compare.png
-    - frame_00_initial.png
-    - frame_01_form_filled.png
-    - frame_02_paths_drawn.png
-    - frame_03_zoom_step_01.png
-    - frame_03_zoom_step_02.png
-    - frame_03_zoom_step_03.png
-    - frame_03_zoom_step_04.png
-    - frame_03_zoom_step_05.png
-    - frame_03_zoom_step_06.png
     - hourly_weight_heatmap.png
+    - improved_astar_flowchart.png
     - model_comparison.png
     - model_radar.png
     - network_statistics.png
     - node_distribution.png
     - node_type_distribution.png
     - path_comparison.png
+    - pna_architecture.png
     - pna_scatter.png
-    - repro_z12_before_zoom.png
-    - repro_z_after_3clicks.png
     - residual_distribution.png
     - robustness.png
+    - scalability_curve.png
+    - simulation_fuel_comparison.png
+    - simulation_route_analysis.png
+    - simulation_time_distance.png
     - task7_qa.png
     - task_efficiency.png
+    - technical_roadmap.png
     - topology_network.png
     - traffic_heatmap.png
     - training_efficiency_bubble.png
     - trajectory_before_after.png
     - trajectory_sample.png
+    - 系统界面图1.png
+    - 系统界面图2.png
+    - 系统界面图3.png
+    - 系统界面图4.png
 
 --------------------------------------------------------------------------------
 【任务7 - 船舶个性化导航决策】
 --------------------------------------------------------------------------------
   状态: 完成
   规划船型数: 10
-    小型货船: 通航频次最高 | 距离=6.3km | 耗时=43.1min | 风险=48.5
-    中型货船: 通航频次最高 | 距离=50.1km | 耗时=406.2min | 风险=44.1
-    大型货船: 通航频次最高 | 距离=16.5km | 耗时=111.7min | 风险=49.9
-    集装箱船: 通航频次最高 | 距离=10.0km | 耗时=77.5min | 风险=48.5
-    大型集装箱船: 时间最短 | 距离=28.0km | 耗时=198.6min | 风险=47.5
-    油轮: 通航频次最高 | 距离=10.7km | 耗时=55.3min | 风险=34.0
-    大型油轮: 通航频次最高 | 距离=28.9km | 耗时=180.8min | 风险=44.2
-    客船: 通航频次最高 | 距离=13.8km | 耗时=85.8min | 风险=42.8
-    渔船: 综合最优 | 距离=33.7km | 耗时=194.1min | 风险=41.5
-    拖船: 通航频次最高 | 距离=9.3km | 耗时=46.3min | 风险=33.5
+    小型货船: 安全优先 | 距离=6.1km | 耗时=43.1min | 风险=48.9
+    中型货船: 距离最短 | 距离=4.1km | 耗时=85.6min | 风险=73.5
+    大型货船: 综合最优 | 距离=5.2km | 耗时=73.5min | 风险=100.0
+    集装箱船: 频次优先 | 距离=29.0km | 耗时=674.3min | 风险=53.1
+    大型集装箱船: 时间最短 | 距离=6.1km | 耗时=93.3min | 风险=43.7
+    油轮: 时间最短 | 距离=22.9km | 耗时=478.5min | 风险=58.5
+    大型油轮: 约束放宽路径 | 距离=6.7km | 耗时=93.0min | 风险=48.6
+    客船: 频次优先 | 距离=5.3km | 耗时=110.6min | 风险=46.0
+    渔船: 综合最优 | 距离=34.7km | 耗时=576.6min | 风险=49.0
+    拖船: 频次优先 | 距离=4.9km | 耗时=78.3min | 风险=45.1
   成功规划: 10/10
 
 --------------------------------------------------------------------------------
 【输出文件清单】
 --------------------------------------------------------------------------------
-  algorithm_benchmark.json                            16.8 KB
+  algorithm_benchmark.json                            16.9 KB
+  benchmark_log.txt                                    2.9 KB
   cleaned_data.csv                                115436.9 KB
   clustered_nodes.csv                                186.8 KB
-  edge_features_dynamic_weights.csv                  616.8 KB
+  connectivity_analysis.json                           0.6 KB
+  eda_quality_report.json                              0.4 KB
+  eda_summary.json                                     0.4 KB
+  edge_features_dynamic_weights.csv                  609.7 KB
+  edge_features_dynamic_weights.csv.bak              592.0 KB
   edge_waypoints.csv                                 766.5 KB
   efficiency_report.txt                                1.0 KB
   extracted_nodes.csv                               5705.9 KB
   feature_importance.csv                               0.4 KB
   feature_matrix.csv                                 328.0 KB
   img/
-  key_nodes.json                                       4.8 KB
+  key_nodes.json                                       1.2 KB
   model_metadata.json                                  2.9 KB
   model_report.txt                                     2.3 KB
   multitask_navigation_model.pt                      117.4 KB
   multitask_navigation_scaler.pkl                      0.9 KB
-  navigation_random_sample.json                        9.1 KB
-  node_centrality.csv                                229.4 KB
+  navigation_random_sample.json                        9.0 KB
+  node_centrality.csv                                 59.3 KB
   passability_model.pkl                              122.2 KB
   risk_prediction_model.pkl                          444.7 KB
   robustness_report.txt                                1.3 KB
-  run1_log.txt                                        96.1 KB
-  run2_log.txt                                       105.3 KB
-  run3_log.txt                                        97.2 KB
-  run4_log.txt                                        92.5 KB
-  run5_log.txt                                        56.8 KB
-  run6_log.txt                                        59.4 KB
-  ship_characteristics_db.csv                         35.9 KB
-  shipxy_results.csv                                  23.7 KB
-  summary_report.txt                                   7.5 KB
+  ship_characteristics_db.csv                         42.1 KB
+  simulation_experiment.json                          12.8 KB
+  summary_report.txt                                   6.9 KB
   topology.json                                     3225.3 KB
   topology_edges.csv                                  34.3 KB
   topology_nodes.csv                                  24.2 KB
+  validity_report.json                                 2.7 KB
   waterway_topology.json                            2996.3 KB
   weight_model_gnn_gnn_state.pt                     4028.6 KB
   weight_model_pna.pkl                              6707.2 KB
   weight_model_pna_gnn_state.pt                     1461.6 KB
   weight_model_pna_stability_5seed.pkl              8140.1 KB
   wilcoxon/
-  汇总                                                   5.5 KB
+  汇总                                                   3.1 KB
 
 ================================================================================
 报告结束

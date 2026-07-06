@@ -51,7 +51,7 @@
     19
   ],
   "use_grid_search": true,
-  "training_timestamp": "2026-06-18T12:17:31.928653",
+  "training_timestamp": "2026-07-04T13:42:56.056506",
   "feature_importance": {
     "speed_decay": 0.7309207206787729,
     "avg_course_change": 0.10354078326695602,

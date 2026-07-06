@@ -87,3 +87,21 @@ nohup.out
 trace.log
 crash.log
 _env_*.log
+
+# 参考文献截图（非项目产出）
+output/img/ref_paper_pages/
+
+# Agent 工作笔记/产物（Trae superpowers / Atlas 协议）
+docs/superpowers/
+Atlas.md
+
+# 运行日志（main.py 写入，无扩展名）
+output/汇总
+
+# 论文写作参考（分散到 docs/ 的论文工作产物）
+docs/参赛报告深度诊断与改进建议*.md
+docs/四篇范文目录结构完整对比.md
+
+# 纯运行日志/报告（可重生成，无独立数据价值）
+tests/test_report.txt
+output/benchmark_log.txt

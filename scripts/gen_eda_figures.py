@@ -19,6 +19,7 @@ matplotlib.use('Agg')
 matplotlib.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'DejaVu Sans']
 matplotlib.rcParams['axes.unicode_minus'] = False
 import matplotlib.pyplot as plt
+import seaborn as sns
 from matplotlib.gridspec import GridSpec
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -46,32 +47,58 @@ def load_data():
 
 
 def gen_spatial_heatmap(df):
-    """轨迹空间密度热力图"""
-    fig, ax = plt.subplots(figsize=(12, 9))
+    """轨迹空间密度热力图（白底学术风格 + 海岸线轮廓）"""
+    import geopandas as gpd
+    fig, ax = plt.subplots(figsize=(10, 9))
+
+    # 裁剪到有效数据范围
+    lon_min, lon_max = df['经度'].quantile(0.001), df['经度'].quantile(0.999)
+    lat_min, lat_max = df['纬度'].quantile(0.001), df['纬度'].quantile(0.999)
+    margin_lon = (lon_max - lon_min) * 0.05
+    margin_lat = (lat_max - lat_min) * 0.05
+    lon_min -= margin_lon; lon_max += margin_lon
+    lat_min -= margin_lat; lat_max += margin_lat
+
+    # 海岸线轮廓（最底层）
+    coastline_shp = ROOT / "data" / "shapefiles" / "ne_10m_coastline.shp"
+    if coastline_shp.exists():
+        coastline = gpd.read_file(coastline_shp)
+        coastline.plot(ax=ax, color='#888888', linewidth=0.5, zorder=1)
+        log.info("已叠加海岸线轮廓")
 
     # 使用hexbin做高效空间密度渲染
-    hb = ax.hexbin(df['经度'], df['纬度'], gridsize=80, cmap='YlOrRd',
-                    mincnt=1, alpha=0.85, linewidths=0.2)
-    cb = fig.colorbar(hb, ax=ax, shrink=0.85, pad=0.02)
+    hb = ax.hexbin(df['经度'], df['纬度'], gridsize=100, cmap='YlOrRd',
+                    mincnt=1, alpha=0.9, linewidths=0.15,
+                    extent=[lon_min, lon_max, lat_min, lat_max],
+                    zorder=2)
+    cb = fig.colorbar(hb, ax=ax, shrink=0.82, pad=0.02, aspect=30)
     cb.set_label('轨迹点密度', fontsize=11)
+    cb.ax.tick_params(labelsize=9)
 
     # 叠加拓扑节点位置
     nodes_csv = OUTPUT_DIR / "topology_nodes.csv"
     if nodes_csv.exists():
         nodes = pd.read_csv(nodes_csv)
-        ax.scatter(nodes['lon'], nodes['lat'], c='#1E88E5', s=8, alpha=0.6,
-                   edgecolors='white', linewidths=0.3, zorder=5, label=f'拓扑节点 ({len(nodes)})')
-        ax.legend(loc='upper left', fontsize=9, framealpha=0.9)
+        ax.scatter(nodes['lon'], nodes['lat'], c='#1565C0', s=6, alpha=0.55,
+                   edgecolors='white', linewidths=0.2, zorder=5,
+                   label=f'拓扑节点 ({len(nodes)})')
+        ax.legend(loc='upper left', fontsize=9, framealpha=0.9,
+                  edgecolor='#cccccc', fancybox=False)
 
     ax.set_xlabel('经度 (°E)', fontsize=12)
     ax.set_ylabel('纬度 (°N)', fontsize=12)
-    ax.set_title(f'AIS轨迹空间密度热力图\n({len(df):,}条轨迹记录, {df["船舶名称"].nunique()}艘船舶)',
-                 fontsize=13, fontweight='bold')
-    ax.set_facecolor('#1a1a2e')
+    ax.set_xlim(lon_min, lon_max)
+    ax.set_ylim(lat_min, lat_max)
+    ax.set_title('AIS 轨迹点空间分布', fontsize=13, fontweight='bold', pad=10)
+
+    # 学术风格：去掉顶部和右侧边框
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.grid(True, linestyle='--', linewidth=0.4, alpha=0.5, color='#999999')
 
     out = IMG_DIR / "eda_spatial_heatmap.png"
     fig.tight_layout()
-    fig.savefig(out, dpi=180, bbox_inches='tight')
+    fig.savefig(out, dpi=180, bbox_inches='tight', facecolor='white')
     plt.close(fig)
     log.info("空间热力图已保存: %s", out)
 
@@ -240,6 +267,30 @@ def gen_ship_statistics(df):
     log.info("船舶统计图已保存: %s", out)
 
 
+def gen_correlation_heatmap(df):
+    """相关性热力图：航速、航向、纬度、经度、小时、trajectory_segment"""
+    df_c = df.dropna(subset=['航速', '航向', '纬度', '经度', '时间', 'trajectory_segment']).copy()
+    df_c['hour'] = df_c['时间'].dt.hour
+
+    cols = ['航速', '航向', '纬度', '经度', 'hour', 'trajectory_segment']
+    labels = ['航速', '航向', '纬度', '经度', '小时', '轨迹段']
+    corr = df_c[cols].corr(method='pearson')
+    corr.index = labels
+    corr.columns = labels
+
+    fig, ax = plt.subplots(figsize=(8, 6.5))
+    sns.heatmap(corr, annot=True, fmt='.2f', cmap='RdBu_r', center=0,
+                vmin=-1, vmax=1, linewidths=0.5, ax=ax,
+                annot_kws={'size': 10})
+    ax.set_title('变量Pearson相关系数热力图', fontsize=13, fontweight='bold')
+
+    out = IMG_DIR / "eda_correlation_heatmap.png"
+    fig.tight_layout()
+    fig.savefig(out, dpi=180, bbox_inches='tight')
+    plt.close(fig)
+    log.info("相关性热力图已保存: %s", out)
+
+
 def save_eda_summary(df):
     """保存EDA统计摘要JSON"""
     summary = {
@@ -274,10 +325,11 @@ def main():
     gen_speed_distribution(df)
     gen_temporal_pattern(df)
     gen_ship_statistics(df)
+    gen_correlation_heatmap(df)
     save_eda_summary(df)
 
     log.info("=" * 50)
-    log.info("全部完成! 生成 4 张EDA图")
+    log.info("全部完成! 生成 5 张EDA图")
     log.info("=" * 50)
 
 

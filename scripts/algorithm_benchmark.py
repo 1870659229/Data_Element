@@ -39,15 +39,23 @@ N_OD_PAIRS = 30
 SEED = 20260611
 
 
-def _build_reachable_od_pool(graph, rng, target=200, max_scan=600):
-    """在最大WCC内预扫描可达OD对"""
-    largest_wcc = max(nx.weakly_connected_components(graph), key=len)
+def _build_reachable_od_pool(graph, rng, target=200, max_scan=600, blocked_edges=None):
+    """在最大WCC内预扫描可达OD对（可选：排除blocked_edges后的子图）"""
+    if blocked_edges:
+        # 构建排除blocked_edges后的子图
+        sub_graph = graph.copy()
+        sub_graph.remove_edges_from(list(blocked_edges))
+        search_graph = sub_graph
+    else:
+        search_graph = graph
+
+    largest_wcc = max(nx.weakly_connected_components(search_graph), key=len)
     sample_nodes = rng.sample(list(largest_wcc), min(max_scan, len(largest_wcc)))
     pairs = []
     for i, s in enumerate(sample_nodes):
         for e in sample_nodes[i + 1:]:
             try:
-                if nx.has_path(graph, s, e):
+                if nx.has_path(search_graph, s, e):
                     pairs.append((s, e))
                     if len(pairs) >= target:
                         return pairs
@@ -58,7 +66,7 @@ def _build_reachable_od_pool(graph, rng, target=200, max_scan=600):
 
 # ==================== 三种算法实现 ====================
 
-def run_standard_dijkstra(graph, distance_weight, start, end):
+def run_standard_dijkstra(graph, distance_weight, start, end, blocked_edges=None):
     """标准Dijkstra：纯距离权重，无启发函数"""
     t0 = time.perf_counter()
     nodes_explored = 0
@@ -83,6 +91,8 @@ def run_standard_dijkstra(graph, distance_weight, start, end):
             if neighbor in closed_set:
                 continue
             ek = (node, neighbor)
+            if blocked_edges and ek in blocked_edges:
+                continue
             dist = distance_weight.get(ek, 100)
             tentative_g = g_score[node] + dist
             if neighbor not in g_score or tentative_g < g_score[neighbor]:
@@ -116,7 +126,7 @@ def run_standard_dijkstra(graph, distance_weight, start, end):
     }
 
 
-def run_standard_astar(graph, distance_weight, start, end):
+def run_standard_astar(graph, distance_weight, start, end, blocked_edges=None):
     """标准A*：距离权重 + 地理启发函数"""
     t0 = time.perf_counter()
     nodes_explored = 0
@@ -152,6 +162,8 @@ def run_standard_astar(graph, distance_weight, start, end):
             if neighbor in closed_set:
                 continue
             ek = (node, neighbor)
+            if blocked_edges and ek in blocked_edges:
+                continue
             dist = distance_weight.get(ek, 100)
             tentative_g = g_score[node] + dist
             if neighbor not in g_score or tentative_g < g_score[neighbor]:
@@ -184,11 +196,10 @@ def run_standard_astar(graph, distance_weight, start, end):
     }
 
 
-def run_improved_astar(nav, ship, start, end, hour=8):
+def run_improved_astar(nav, ship, start, end, blocked_edges, hour=8):
     """改进A*：风险感知+时间依赖+物理约束（系统现有算法）"""
     t0 = time.perf_counter()
 
-    blocked_edges = nav.constraint_checker.get_blocked_edges(ship)
     path_result = nav._dijkstra_safest(start, end, ship, blocked_edges, hour)
 
     elapsed = (time.perf_counter() - t0) * 1000
@@ -198,7 +209,7 @@ def run_improved_astar(nav, ship, start, end, hour=8):
 
     return {
         'nodes': path_result.nodes,
-        'nodes_explored': len(set(path_result.nodes)),  # 近似
+        'nodes_explored': path_result.nodes_explored,  # 真实搜索节点数
         'time_ms': elapsed,
         'distance_m': path_result.total_distance,
         'risk_score': path_result.risk_score,
@@ -207,13 +218,17 @@ def run_improved_astar(nav, ship, start, end, hour=8):
 
 
 def compute_path_risk(nav, path_nodes, ship):
-    """计算路径总风险评分"""
-    total_risk = 0.0
+    """计算路径距离加权平均风险评分（与改进A*的_build_path_result一致）"""
+    weighted_risk_sum = 0.0
+    total_distance = 0.0
     for i in range(len(path_nodes) - 1):
         ek = (path_nodes[i], path_nodes[i + 1])
         risk = nav.constraint_checker.get_edge_risk_score(ek, ship)
-        total_risk += risk
-    return total_risk
+        features = nav.edge_features.get(ek, {})
+        distance = features.get('avg_distance', 100) if features else nav.distance_weight.get(ek, 100)
+        weighted_risk_sum += risk * distance
+        total_distance += distance
+    return weighted_risk_sum / max(total_distance, 1) if total_distance > 0 else 0
 
 
 def compute_path_time(nav, path_nodes, hour=8):
@@ -240,18 +255,6 @@ def main():
     graph = nav_sys.graph
     distance_weight = nav.distance_weight
 
-    # 构建可达OD池
-    print("[2/4] 构建可达OD池...")
-    rng = random.Random(SEED)
-    od_pool = _build_reachable_od_pool(graph, rng, target=200)
-    if len(od_pool) < N_OD_PAIRS:
-        print(f"  可达OD对仅 {len(od_pool)} 个，不足 {N_OD_PAIRS}")
-        N = len(od_pool)
-    else:
-        N = N_OD_PAIRS
-    od_pairs = rng.sample(od_pool, N)
-    print(f"  选取 {N} 对OD")
-
     # 选择船舶（绕过模板ship_name冲突，直接构造）
     ship = ShipCharacteristics(
         ship_name="锦江2003", ship_type="中型货船",
@@ -260,6 +263,23 @@ def main():
     )
     print(f"  船舶: {ship.ship_name} ({ship.ship_type}), 吃水={ship.draft}m")
 
+    # 预计算物理约束（同一艘船结果不变，循环外只算一次）
+    print("  预计算物理约束...")
+    blocked_edges = nav.constraint_checker.get_blocked_edges(ship)
+    print(f"  被阻塞边数: {len(blocked_edges)}")
+
+    # 构建可达OD池（在排除blocked_edges的子图上，确保大型船舶也有可达路径）
+    print("[2/4] 构建可达OD池...")
+    rng = random.Random(SEED)
+    od_pool = _build_reachable_od_pool(graph, rng, target=200, blocked_edges=blocked_edges)
+    if len(od_pool) < N_OD_PAIRS:
+        print(f"  可达OD对仅 {len(od_pool)} 个，不足 {N_OD_PAIRS}")
+        N = len(od_pool)
+    else:
+        N = N_OD_PAIRS
+    od_pairs = rng.sample(od_pool, N)
+    print(f"  选取 {N} 对OD")
+
     # 运行对比
     print(f"[3/4] 运行 {N} 对OD × 3种算法...")
     results = []
@@ -267,14 +287,14 @@ def main():
     for idx, (start, end) in enumerate(od_pairs):
         print(f"  OD {idx + 1}/{N}: {start} → {end}")
 
-        # 标准Dijkstra
-        r_dijk = run_standard_dijkstra(graph, distance_weight, start, end)
+        # 标准Dijkstra（同样排除blocked_edges，公平对比）
+        r_dijk = run_standard_dijkstra(graph, distance_weight, start, end, blocked_edges)
 
-        # 标准A*
-        r_astar = run_standard_astar(graph, distance_weight, start, end)
+        # 标准A*（同样排除blocked_edges，公平对比）
+        r_astar = run_standard_astar(graph, distance_weight, start, end, blocked_edges)
 
-        # 改进A*
-        r_improved = run_improved_astar(nav, ship, start, end, hour=8)
+        # 改进A*（blocked_edges已预计算，计时只含搜索）
+        r_improved = run_improved_astar(nav, ship, start, end, blocked_edges, hour=8)
 
         # 为标准算法补充风险和耗时计算
         if r_dijk:
@@ -449,11 +469,13 @@ def _plot_comparison(summary, results, save_path):
     bars = ax.bar(algo_labels, means, color=colors, yerr=stds, capsize=5)
     ax.set_ylabel('搜索节点数')
     ax.set_title('搜索效率对比')
+    y_max = max(m + s for m, s in zip(means, stds)) * 1.15
+    ax.set_ylim(0, y_max)
     for bar, mean in zip(bars, means):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1,
-                f'{mean:.1f}', ha='center', va='bottom', fontsize=10)
+        ax.text(bar.get_x() + bar.get_width() / 2, y_max * 0.95,
+                f'{mean:.1f}', ha='center', va='top', fontsize=10)
 
-    # 2. 运行时间（柱状图）
+    # 2. 运行时间（柱状图，对数y轴）
     ax = axes[0, 1]
     means = [summary[a]['time_ms_mean'] for a in algos]
     stds = []
@@ -463,22 +485,24 @@ def _plot_comparison(summary, results, save_path):
     bars = ax.bar(algo_labels, means, color=colors, yerr=stds, capsize=5)
     ax.set_ylabel('运行时间 (ms)')
     ax.set_title('运行时间对比')
+    ax.set_yscale('log')
     for bar, mean in zip(bars, means):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
+        ax.text(bar.get_x() + bar.get_width() / 2, mean * 1.5,
                 f'{mean:.2f}', ha='center', va='bottom', fontsize=10)
 
-    # 3. 风险评分（箱线图）
+    # 3. 风险评分（箱线图，对数y轴）
     ax = axes[1, 0]
     data_risk = []
     for a in algos:
-        valid = [r[a].get('risk_score', 0) for r in results if r[a] is not None]
+        valid = [max(r[a].get('risk_score', 0), 0.001) for r in results if r[a] is not None]
         data_risk.append(valid)
     bp = ax.boxplot(data_risk, tick_labels=algo_labels, patch_artist=True)
     for patch, color in zip(bp['boxes'], colors):
         patch.set_facecolor(color)
         patch.set_alpha(0.7)
-    ax.set_ylabel('路径风险评分')
+    ax.set_ylabel('路径风险评分（距离加权平均）')
     ax.set_title('路径安全性对比')
+    ax.set_yscale('log')
 
     # 4. 路径耗时（箱线图）
     ax = axes[1, 1]

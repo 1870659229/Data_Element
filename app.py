@@ -901,7 +901,7 @@ def plan_paths(start_node, end_node, ship_type='中型货船', ship_name=None, m
         PathType.SAFEST: '安全优先',
         PathType.FASTEST: '时间最短',
         PathType.BALANCED: '综合最优',
-        PathType.FREQUENT: '通航频次最高',
+        PathType.FREQUENT: '频次优先',
         PathType.SHORTEST: '距离最短',
         PathType.RELAXED: '约束放宽路径',
     }

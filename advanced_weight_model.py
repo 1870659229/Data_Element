@@ -2350,12 +2350,229 @@ class AdvancedWeightModel:
         
         print(f"  有数据边: PNA预测 {n_pna_used} 条, 经验均值 {n_empirical_used} 条")
 
-        # ===== 阶段2：零段边 → 邻边速度推断 =====
-        # 不参与 GNN 消息传递，避免在图结构中引入无信号节点污染消息传播
+        # ===== 阶段2：零段边 → PNA transductive推理优先，邻边速度推断兜底 =====
         if len(edges_without_data) == 0:
             print(f"  所有边均有数据，无需外推")
         else:
-            print(f"  零段边: {len(edges_without_data)} 条，使用邻边速度推断")
+            n_pna_nodata = 0
+            n_nbr_inference = 0
+
+            # 尝试 PNA transductive 推理：将无数据边加入图结构，前向传播获取预测
+            pna_nodata_preds = {}
+            if self.best_model_name in ('pna', 'gnn', 'gnn_ensemble') and self.best_model is not None:
+                try:
+                    import torch
+                    from torch_geometric.utils import degree as pyg_degree
+
+                    # 收集已有缓存中的节点ID映射（训练时的节点集合）
+                    cached_node_ids = set()
+                    for edge_key in gnn_cache:
+                        cached_node_ids.add(edge_key[0])
+                        cached_node_ids.add(edge_key[1])
+                    # 也加入无数据边涉及的节点
+                    for (u, v) in edges_without_data:
+                        cached_node_ids.add(u)
+                        cached_node_ids.add(v)
+
+                    # 节点ID → 连续索引
+                    node_id_to_idx = {nid: idx for idx, nid in enumerate(sorted(cached_node_ids))}
+
+                    # 构建节点特征 [degree, waterway, lat, lon, cluster_coeff]
+                    try:
+                        import networkx as nx
+                        clustering = nx.clustering(graph)
+                    except Exception:
+                        clustering = {}
+                    node_feat_list = []
+                    for nid in sorted(cached_node_ids):
+                        attrs = graph.nodes[nid]
+                        degree = self.node_degrees.get(nid, 0)
+                        waterway = self.node_waterway_types.get(nid, 0)
+                        cc = clustering.get(nid, 0)
+                        node_feat_list.append([degree, waterway, attrs['lat'], attrs['lon'], cc])
+                    node_features = torch.FloatTensor(node_feat_list)
+
+                    # 标准化节点特征
+                    node_scaler = getattr(self, 'gnn_node_scaler', None)
+                    if node_scaler is not None:
+                        node_features = torch.FloatTensor(node_scaler.transform(node_features.numpy()))
+
+                    # 构建边索引：有数据边（双向）+ 无数据边（双向）
+                    edge_index_list = []
+                    edge_feat_list = []
+                    edge_scaler = getattr(self, 'gnn_edge_scaler', None)
+
+                    # 有数据边：从缓存中获取14维特征（需要重新构造）
+                    # 先收集有数据边的特征（与 _train_gnn L1512-1517 一致）
+                    for edge_key, segments in edge_segments.items():
+                        if len(segments) < 2:
+                            continue
+                        if edge_key not in all_edges:
+                            continue
+                        from_node, to_node = edge_key
+                        if from_node not in node_id_to_idx or to_node not in node_id_to_idx:
+                            continue
+                        u_idx = node_id_to_idx[from_node]
+                        v_idx = node_id_to_idx[to_node]
+                        waterway_type = self._get_edge_waterway_type(from_node, to_node, graph)
+                        node_degree_from = self.node_degrees.get(from_node, 0)
+                        node_degree_to = self.node_degrees.get(to_node, 0)
+                        betweenness = self.edge_betweenness.get(edge_key, 0)
+
+                        for period_name in ['day', 'night']:
+                            period_segments = [s for s in segments if self._get_time_period(s['hour']) == period_name]
+                            if len(period_segments) < 2:
+                                continue
+                            avg_time = np.mean([s['time_diff'] for s in period_segments])
+                            avg_reported_speed = np.mean([s['reported_speed'] for s in period_segments])
+                            distance = np.mean([s['distance'] for s in period_segments])
+                            avg_bearing = np.mean([s['bearing'] for s in period_segments])
+                            avg_course_change = np.mean([s['course_change'] for s in period_segments])
+                            bearing_rad = np.deg2rad(avg_bearing)
+                            speeds = [s['reported_speed'] for s in period_segments]
+                            speed_iqr = np.percentile(speeds, 75) - np.percentile(speeds, 25) if len(speeds) > 1 else 0
+                            hours_list = [s['hour'] for s in period_segments]
+                            avg_hour = np.mean(hours_list)
+                            hour_sin = np.sin(2 * np.pi * avg_hour / 24)
+                            hour_cos = np.cos(2 * np.pi * avg_hour / 24)
+                            actual_speeds = [s['actual_speed'] for s in period_segments]
+                            speed_decay = np.mean(actual_speeds) / max(avg_reported_speed, 0.5)
+                            speed_ms = max(avg_reported_speed, 0.5) * 0.5144
+                            theoretical_time = distance / speed_ms
+
+                            edge_index_list.append([u_idx, v_idx])
+                            edge_feat_list.append([
+                                distance, theoretical_time, avg_reported_speed,
+                                np.sin(bearing_rad), np.cos(bearing_rad), avg_course_change,
+                                waterway_type, node_degree_from, node_degree_to, betweenness,
+                                speed_iqr, hour_sin, hour_cos, speed_decay,
+                            ])
+
+                    n_data_edges = len(edge_index_list)
+
+                    # 无数据边：用邻边默认特征构造14维
+                    # 预计算有数据边的速度统计，用于邻居推断
+                    data_edge_speeds = {}
+                    for edge_key, segments in edge_segments.items():
+                        if len(segments) >= 2:
+                            data_edge_speeds[edge_key] = np.median([s['reported_speed'] for s in segments])
+
+                    nodata_edge_info = {}  # (from, to) -> {distance, theoretical_time, default_speed, bearing, ...}
+                    for (from_node, to_node) in edges_without_data:
+                        if from_node not in node_id_to_idx or to_node not in node_id_to_idx:
+                            continue
+                        u_idx = node_id_to_idx[from_node]
+                        v_idx = node_id_to_idx[to_node]
+                        waterway_type = self._get_edge_waterway_type(from_node, to_node, graph)
+                        node_degree_from = self.node_degrees.get(from_node, 0)
+                        node_degree_to = self.node_degrees.get(to_node, 0)
+                        betweenness = self.edge_betweenness.get((from_node, to_node), 0)
+                        u_attr = graph.nodes[from_node]
+                        v_attr = graph.nodes[to_node]
+                        dist = haversine_distance(u_attr['lat'], u_attr['lon'], v_attr['lat'], v_attr['lon'])
+                        avg_bearing = calculate_bearing(u_attr['lat'], u_attr['lon'], v_attr['lat'], v_attr['lon'])
+                        bearing_rad = np.deg2rad(avg_bearing)
+
+                        # 邻边速度推断
+                        nbr_speeds = []
+                        for nbr in set(list(graph.neighbors(from_node)) + list(graph.neighbors(to_node))):
+                            for (a, b) in [(from_node, nbr), (nbr, from_node), (to_node, nbr), (nbr, to_node)]:
+                                if (a, b) in data_edge_speeds:
+                                    nbr_speeds.append(data_edge_speeds[(a, b)])
+                        default_speed = np.median(nbr_speeds) if nbr_speeds else 5.0
+                        speed_ms = max(default_speed, 0.5) * 0.5144
+                        theoretical_time = dist / speed_ms
+
+                        nodata_edge_info[(from_node, to_node)] = {
+                            'distance': dist, 'theoretical_time': theoretical_time,
+                            'default_speed': default_speed, 'bearing': avg_bearing,
+                            'waterway_type': waterway_type,
+                            'node_degree_from': node_degree_from,
+                            'node_degree_to': node_degree_to,
+                            'betweenness': betweenness,
+                            'nbr_count': len(nbr_speeds),
+                            'nbr_speed_median': np.median(nbr_speeds) if nbr_speeds else 0.0,
+                        }
+
+                        # 为 day/night 各加一条边
+                        for period_name in ['day', 'night']:
+                            hour = 9 if period_name == 'day' else 21
+                            hour_sin = np.sin(2 * np.pi * hour / 24)
+                            hour_cos = np.cos(2 * np.pi * hour / 24)
+                            speed_decay = 1.0  # 无数据，假设无衰减
+
+                            edge_index_list.append([u_idx, v_idx])
+                            edge_feat_list.append([
+                                dist, theoretical_time, default_speed,
+                                np.sin(bearing_rad), np.cos(bearing_rad), 0.0,
+                                waterway_type, node_degree_from, node_degree_to, betweenness,
+                                0.0, hour_sin, hour_cos, speed_decay,
+                            ])
+
+                    n_total_edges = len(edge_index_list)
+                    n_nodata_edges = n_total_edges - n_data_edges
+
+                    if n_total_edges > 0 and n_nodata_edges > 0:
+                        edge_index_tensor = torch.LongTensor(edge_index_list).t().contiguous()
+                        # 双向边
+                        edge_index_bidir = torch.cat([
+                            edge_index_tensor,
+                            edge_index_tensor.flip(0)
+                        ], dim=1)
+                        edge_features_tensor = torch.FloatTensor(edge_feat_list)
+                        if edge_scaler is not None:
+                            edge_features_tensor = torch.FloatTensor(edge_scaler.transform(edge_features_tensor.numpy()))
+                        edge_features_bidir = torch.cat([edge_features_tensor, edge_features_tensor], dim=0)
+
+                        # 消息传递用全部双向边
+                        msg_edge_index = edge_index_bidir
+                        msg_edge_attr = edge_features_bidir
+
+                        # 前向传播
+                        self.best_model.eval()
+                        with torch.no_grad():
+                            all_pred_raw = self.best_model(
+                                node_features, edge_index_bidir, edge_features_bidir,
+                                n_total_edges, msg_edge_index=msg_edge_index,
+                                edge_attr_msg=msg_edge_attr
+                            ).numpy()
+
+                        if getattr(self, '_gnn_use_log_transform', True):
+                            all_pred_ratio = inverse_log_transform(all_pred_raw)
+                        else:
+                            all_pred_ratio = all_pred_raw
+                        all_pred_ratio = np.clip(all_pred_ratio, 0.5, 3.0)
+
+                        # 提取无数据边的预测值
+                        nodata_pred_idx = 0
+                        for (from_node, to_node) in edges_without_data:
+                            if (from_node, to_node) not in nodata_edge_info:
+                                continue
+                            info = nodata_edge_info[(from_node, to_node)]
+                            edge_key = (from_node, to_node)
+
+                            # day 和 night 各一条预测
+                            day_pred_time = all_pred_ratio[n_data_edges + nodata_pred_idx * 2] * info['theoretical_time']
+                            night_pred_time = all_pred_ratio[n_data_edges + nodata_pred_idx * 2 + 1] * info['theoretical_time']
+                            avg_pred_time = (day_pred_time + night_pred_time) / 2.0
+                            nodata_pred_idx += 1
+
+                            pna_nodata_preds[edge_key] = {
+                                'day': {'predicted_time': float(day_pred_time)},
+                                'night': {'predicted_time': float(night_pred_time)},
+                                'avg_predicted_time': float(avg_pred_time),
+                                'default_speed': info['default_speed'],
+                                'distance': info['distance'],
+                                'bearing': info['bearing'],
+                            }
+
+                        print(f"  PNA transductive推理: {len(pna_nodata_preds)} 条零段边获得PNA预测")
+                except Exception as e:
+                    print(f"  PNA transductive推理失败: {e}，回退到邻边速度推断")
+                    import traceback; traceback.print_exc()
+
+            # 写入无数据边的 edge_features
+            print(f"  零段边: {len(edges_without_data)} 条")
             for from_node, to_node in edges_without_data:
                 edge_key = (from_node, to_node)
                 waterway_type = self._get_edge_waterway_type(from_node, to_node, graph)
@@ -2365,8 +2582,9 @@ class AdvancedWeightModel:
                 u_attr = graph.nodes[from_node]
                 v_attr = graph.nodes[to_node]
                 distance = haversine_distance(u_attr['lat'], u_attr['lon'], v_attr['lat'], v_attr['lon'])
+                bearings = [calculate_bearing(u_attr['lat'], u_attr['lon'], v_attr['lat'], v_attr['lon'])]
 
-                # 从邻边（已有数据）推断速度
+                # 邻边速度推断（兜底）
                 nbr_speeds = []
                 for nbr in set(list(graph.neighbors(from_node)) + list(graph.neighbors(to_node))):
                     for (a, b) in [(from_node, nbr), (nbr, from_node), (to_node, nbr), (nbr, to_node)]:
@@ -2377,19 +2595,28 @@ class AdvancedWeightModel:
                 speed_ms = max(default_speed, 0.5) * 0.5144
                 theoretical_time = distance / speed_ms
 
-                bearings = [calculate_bearing(u_attr['lat'], u_attr['lon'], v_attr['lat'], v_attr['lon'])]
+                # PNA transductive 推理优先
+                pna_info = pna_nodata_preds.get(edge_key)
+                if pna_info is not None:
+                    predicted_time = pna_info['avg_predicted_time']
+                    model_used = self.best_model_name  # 'pna'
+                    n_pna_nodata += 1
+                else:
+                    predicted_time = theoretical_time
+                    model_used = 'neighbor_inference'
+                    n_nbr_inference += 1
 
                 self.edge_features[edge_key] = {
                     'segment_count': 0,
                     'from_node': from_node,
                     'to_node': to_node,
                     'avg_distance': distance,
-                    'avg_travel_time': theoretical_time,
-                    'predicted_travel_time': theoretical_time,
-                    'std_travel_time': theoretical_time * 0.2,
-                    'min_travel_time': theoretical_time * 0.8,
-                    'max_travel_time': theoretical_time * 1.2,
-                    'median_travel_time': theoretical_time,
+                    'avg_travel_time': predicted_time,
+                    'predicted_travel_time': predicted_time,
+                    'std_travel_time': predicted_time * 0.2,
+                    'min_travel_time': predicted_time * 0.8,
+                    'max_travel_time': predicted_time * 1.2,
+                    'median_travel_time': predicted_time,
                     'avg_actual_speed': default_speed,
                     'std_actual_speed': 1.0,
                     'avg_reported_speed': default_speed,
@@ -2405,9 +2632,23 @@ class AdvancedWeightModel:
                     'node_degree_from': node_degree_from,
                     'node_degree_to': node_degree_to,
                     'edge_betweenness': betweenness,
-                    'model_used': 'neighbor_inference'
+                    'model_used': model_used,
                 }
-            print(f"  邻边速度推断完成: {len(edges_without_data)} 条零段边")
+
+                # 时段级别预测
+                if pna_info is not None:
+                    for period_name in ['day', 'night']:
+                        period_pred = pna_info.get(period_name, {})
+                        period_predicted = period_pred.get('predicted_time', predicted_time)
+                        self.edge_features[edge_key][period_name] = {
+                            'avg_travel_time': period_predicted,
+                            'predicted_travel_time': period_predicted,
+                            'segment_count': 0,
+                            'avg_reported_speed': default_speed,
+                            'model_used': self.best_model_name,
+                        }
+
+            print(f"  零段边完成: PNA推理 {n_pna_nodata} 条, 邻边推断 {n_nbr_inference} 条")
     
     def _compute_direction_distribution(self, bearings: List[float]) -> Dict[int, int]:
         """计算方向分布"""
@@ -2471,7 +2712,9 @@ class AdvancedWeightModel:
                 'avg_actual_speed': features['avg_actual_speed'],
                 'std_actual_speed': features.get('std_actual_speed', 0),
                 'avg_reported_speed': features.get('avg_reported_speed', 0),
-                'speed_reliability': features.get('speed_reliability', 0),
+                # 速度可靠性 = 1 - 速度变异系数(CV)，CV=std/mean
+                # empirical 边用真实 std/mean；pna 推断边 std=1.0, mean=default_speed
+                'speed_reliability': max(0.0, 1.0 - features.get('std_actual_speed', 0) / max(features.get('avg_actual_speed', 0.5), 0.5)),
                 'theoretical_time': features['avg_distance'] / max(features.get('avg_reported_speed', 5), 0.5) / 0.5144,
 
                 # 水域类型

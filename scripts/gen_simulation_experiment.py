@@ -122,9 +122,14 @@ def compute_route_fuel(path_edges, edge_attrs, ship_type='medium_cargo', departu
         else:
             edge_time = base_time
 
-        # 燃油计算
-        speed_knots = speed_ms / 0.5144
-        fuel_rate = params['a'] * speed_knots ** 3 + params['b']  # 吨/天
+        # 燃油计算: 用 distance/time 反推等效速度，保证物理一致性
+        # PNA 推断耗时可能远大于 reported_speed 对应的耗时，此时船实际在慢速航行
+        if edge_time > 0:
+            effective_speed_ms = dist / edge_time  # 等效速度 m/s
+            effective_speed_knots = effective_speed_ms / 0.5144
+        else:
+            effective_speed_knots = speed_ms / 0.5144
+        fuel_rate = params['a'] * effective_speed_knots ** 3 + params['b']  # 吨/天
         time_days = edge_time / 86400
         fuel = fuel_rate * time_days
 

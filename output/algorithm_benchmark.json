@@ -6,24 +6,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 330,
-      "time_ms": 0.356,
+      "time_ms": 0.817,
       "distance_m": 219410.3,
-      "risk_score": 5088.8933,
-      "total_time_s": 108963.6
+      "risk_score": 53.1953,
+      "total_time_s": 301161.3
     },
     "astar": {
       "nodes_explored": 249,
-      "time_ms": 0.517,
+      "time_ms": 1.292,
       "distance_m": 220142.5,
-      "risk_score": 5007.8198,
-      "total_time_s": 109315.0
+      "risk_score": 53.1832,
+      "total_time_s": 303082.0
     },
     "improved": {
-      "nodes_explored": 67,
-      "time_ms": 294.557,
-      "distance_m": 229693.1,
-      "risk_score": 43.8325,
-      "total_time_s": 113475.4
+      "nodes_explored": 202,
+      "time_ms": 240.361,
+      "distance_m": 229689.9,
+      "risk_score": 50.73,
+      "total_time_s": 314946.3
     }
   },
   {
@@ -33,24 +33,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 307,
-      "time_ms": 0.641,
+      "time_ms": 0.575,
       "distance_m": 184044.2,
-      "risk_score": 4088.787,
-      "total_time_s": 92256.3
+      "risk_score": 52.8983,
+      "total_time_s": 255097.3
     },
     "astar": {
       "nodes_explored": 207,
-      "time_ms": 0.876,
+      "time_ms": 0.543,
       "distance_m": 184320.8,
-      "risk_score": 4038.8945,
-      "total_time_s": 92392.4
+      "risk_score": 52.8972,
+      "total_time_s": 256325.6
     },
     "improved": {
-      "nodes_explored": 45,
-      "time_ms": 248.1,
-      "distance_m": 188548.6,
-      "risk_score": 43.9288,
-      "total_time_s": 93966.0
+      "nodes_explored": 184,
+      "time_ms": 192.059,
+      "distance_m": 188236.2,
+      "risk_score": 51.7913,
+      "total_time_s": 262539.9
     }
   },
   {
@@ -60,24 +60,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 205,
-      "time_ms": 0.233,
+      "time_ms": 0.418,
       "distance_m": 89424.1,
-      "risk_score": 2889.2956,
-      "total_time_s": 41763.8
+      "risk_score": 50.962,
+      "total_time_s": 118554.6
     },
     "astar": {
       "nodes_explored": 97,
-      "time_ms": 0.188,
+      "time_ms": 0.292,
       "distance_m": 89560.8,
-      "risk_score": 2686.4184,
-      "total_time_s": 41633.1
+      "risk_score": 50.8918,
+      "total_time_s": 118423.9
     },
     "improved": {
-      "nodes_explored": 23,
-      "time_ms": 144.288,
-      "distance_m": 92345.6,
-      "risk_score": 42.0541,
-      "total_time_s": 42733.2
+      "nodes_explored": 67,
+      "time_ms": 79.08,
+      "distance_m": 91863.5,
+      "risk_score": 50.5096,
+      "total_time_s": 122090.2
     }
   },
   {
@@ -87,24 +87,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 30,
-      "time_ms": 0.053,
+      "time_ms": 0.136,
       "distance_m": 7323.7,
-      "risk_score": 1260.9144,
-      "total_time_s": 3926.5
+      "risk_score": 61.1171,
+      "total_time_s": 8906.3
     },
     "astar": {
       "nodes_explored": 19,
-      "time_ms": 0.052,
+      "time_ms": 0.155,
       "distance_m": 7323.7,
-      "risk_score": 1260.9144,
-      "total_time_s": 3926.5
+      "risk_score": 61.1171,
+      "total_time_s": 8906.3
     },
     "improved": {
-      "nodes_explored": 14,
-      "time_ms": 122.991,
-      "distance_m": 8477.7,
-      "risk_score": 59.6874,
-      "total_time_s": 4356.4
+      "nodes_explored": 19,
+      "time_ms": 33.083,
+      "distance_m": 8136.5,
+      "risk_score": 58.6872,
+      "total_time_s": 9711.4
     }
   },
   {
@@ -114,24 +114,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 187,
-      "time_ms": 0.536,
+      "time_ms": 0.555,
       "distance_m": 85524.4,
-      "risk_score": 3003.4797,
-      "total_time_s": 39690.0
+      "risk_score": 51.0213,
+      "total_time_s": 112679.3
     },
     "astar": {
       "nodes_explored": 102,
-      "time_ms": 0.582,
+      "time_ms": 0.503,
       "distance_m": 85795.4,
-      "risk_score": 2833.677,
-      "total_time_s": 39777.9
+      "risk_score": 51.2519,
+      "total_time_s": 113199.4
     },
     "improved": {
-      "nodes_explored": 27,
-      "time_ms": 156.923,
-      "distance_m": 88727.4,
-      "risk_score": 41.7937,
-      "total_time_s": 40670.9
+      "nodes_explored": 72,
+      "time_ms": 81.364,
+      "distance_m": 88379.6,
+      "risk_score": 50.7612,
+      "total_time_s": 116877.2
     }
   },
   {
@@ -141,24 +141,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 105,
-      "time_ms": 0.143,
+      "time_ms": 0.37,
       "distance_m": 67605.2,
-      "risk_score": 3212.9821,
-      "total_time_s": 33836.4
+      "risk_score": 56.1025,
+      "total_time_s": 89757.3
     },
     "astar": {
       "nodes_explored": 89,
-      "time_ms": 0.176,
+      "time_ms": 0.55,
       "distance_m": 67741.9,
-      "risk_score": 3010.1049,
-      "total_time_s": 33705.7
+      "risk_score": 55.9992,
+      "total_time_s": 89626.5
     },
     "improved": {
-      "nodes_explored": 17,
-      "time_ms": 99.583,
-      "distance_m": 76403.8,
-      "risk_score": 44.1415,
-      "total_time_s": 37649.6
+      "nodes_explored": 65,
+      "time_ms": 97.004,
+      "distance_m": 70672.6,
+      "risk_score": 55.81,
+      "total_time_s": 93715.2
     }
   },
   {
@@ -168,24 +168,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 234,
-      "time_ms": 0.525,
+      "time_ms": 0.653,
       "distance_m": 94954.2,
-      "risk_score": 4042.1813,
-      "total_time_s": 47066.7
+      "risk_score": 53.9126,
+      "total_time_s": 124291.2
     },
     "astar": {
       "nodes_explored": 115,
-      "time_ms": 0.79,
+      "time_ms": 0.653,
       "distance_m": 95049.8,
-      "risk_score": 3939.3041,
-      "total_time_s": 46990.3
+      "risk_score": 53.8223,
+      "total_time_s": 124214.8
     },
     "improved": {
-      "nodes_explored": 30,
-      "time_ms": 190.905,
-      "distance_m": 103752.7,
-      "risk_score": 44.0428,
-      "total_time_s": 50879.9
+      "nodes_explored": 92,
+      "time_ms": 85.895,
+      "distance_m": 108742.2,
+      "risk_score": 51.7153,
+      "total_time_s": 142432.5
     }
   },
   {
@@ -195,24 +195,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 316,
-      "time_ms": 0.408,
+      "time_ms": 0.555,
       "distance_m": 201615.1,
-      "risk_score": 4535.4391,
-      "total_time_s": 100583.6
+      "risk_score": 53.9348,
+      "total_time_s": 278591.3
     },
     "astar": {
       "nodes_explored": 227,
-      "time_ms": 0.455,
+      "time_ms": 0.544,
       "distance_m": 202347.3,
-      "risk_score": 4454.3656,
-      "total_time_s": 100935.0
+      "risk_score": 53.9189,
+      "total_time_s": 280512.0
     },
     "improved": {
-      "nodes_explored": 53,
-      "time_ms": 299.756,
-      "distance_m": 211897.9,
-      "risk_score": 43.8828,
-      "total_time_s": 105095.4
+      "nodes_explored": 197,
+      "time_ms": 196.683,
+      "distance_m": 211585.5,
+      "risk_score": 51.3251,
+      "total_time_s": 293265.3
     }
   },
   {
@@ -222,24 +222,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 335,
-      "time_ms": 0.824,
+      "time_ms": 0.424,
       "distance_m": 224313.5,
-      "risk_score": 5256.7166,
-      "total_time_s": 111294.1
+      "risk_score": 53.0105,
+      "total_time_s": 307037.5
     },
     "astar": {
       "nodes_explored": 254,
-      "time_ms": 1.276,
+      "time_ms": 0.534,
       "distance_m": 225045.7,
-      "risk_score": 5175.6431,
-      "total_time_s": 111645.5
+      "risk_score": 52.9992,
+      "total_time_s": 308958.2
     },
     "improved": {
-      "nodes_explored": 72,
-      "time_ms": 327.414,
-      "distance_m": 234596.3,
-      "risk_score": 43.8058,
-      "total_time_s": 115806.0
+      "nodes_explored": 208,
+      "time_ms": 212.215,
+      "distance_m": 234593.1,
+      "risk_score": 50.6048,
+      "total_time_s": 320822.5
     }
   },
   {
@@ -249,24 +249,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 35,
-      "time_ms": 0.142,
+      "time_ms": 0.073,
       "distance_m": 7803.0,
-      "risk_score": 1635.0366,
-      "total_time_s": 4210.6
+      "risk_score": 62.057,
+      "total_time_s": 9190.4
     },
     "astar": {
       "nodes_explored": 24,
-      "time_ms": 0.185,
+      "time_ms": 0.087,
       "distance_m": 7844.1,
-      "risk_score": 1535.0366,
-      "total_time_s": 4156.3
+      "risk_score": 62.2557,
+      "total_time_s": 9136.1
     },
     "improved": {
-      "nodes_explored": 17,
-      "time_ms": 166.031,
-      "distance_m": 10797.6,
-      "risk_score": 56.8539,
-      "total_time_s": 5528.0
+      "nodes_explored": 22,
+      "time_ms": 38.987,
+      "distance_m": 10456.4,
+      "risk_score": 56.27,
+      "total_time_s": 12848.0
     }
   },
   {
@@ -276,24 +276,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 299,
-      "time_ms": 0.838,
+      "time_ms": 0.76,
       "distance_m": 166064.3,
-      "risk_score": 3887.8745,
-      "total_time_s": 83940.3
+      "risk_score": 53.1458,
+      "total_time_s": 232301.3
     },
     "astar": {
       "nodes_explored": 199,
-      "time_ms": 1.007,
+      "time_ms": 1.073,
       "distance_m": 166340.9,
-      "risk_score": 3837.982,
-      "total_time_s": 84076.4
+      "risk_score": 53.1442,
+      "total_time_s": 233529.6
     },
     "improved": {
-      "nodes_explored": 40,
-      "time_ms": 229.184,
-      "distance_m": 170568.7,
-      "risk_score": 44.0146,
-      "total_time_s": 85649.9
+      "nodes_explored": 182,
+      "time_ms": 135.04,
+      "distance_m": 170256.3,
+      "risk_score": 51.9159,
+      "total_time_s": 239743.9
     }
   },
   {
@@ -303,24 +303,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 75,
-      "time_ms": 0.147,
+      "time_ms": 0.245,
       "distance_m": 22156.9,
-      "risk_score": 2222.5596,
-      "total_time_s": 11301.9
+      "risk_score": 59.9449,
+      "total_time_s": 29750.4
     },
     "astar": {
       "nodes_explored": 30,
-      "time_ms": 0.116,
+      "time_ms": 0.218,
       "distance_m": 22197.9,
-      "risk_score": 2122.5596,
-      "total_time_s": 11247.5
+      "risk_score": 60.0191,
+      "total_time_s": 29696.1
     },
     "improved": {
       "nodes_explored": 6,
-      "time_ms": 18.085,
+      "time_ms": 6.595,
       "distance_m": 25078.4,
-      "risk_score": 43.8408,
-      "total_time_s": 12271.3
+      "risk_score": 51.2087,
+      "total_time_s": 33338.7
     }
   },
   {
@@ -330,24 +330,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 23,
-      "time_ms": 0.054,
+      "time_ms": 0.068,
       "distance_m": 5859.8,
-      "risk_score": 643.4253,
-      "total_time_s": 2584.6
+      "risk_score": 81.2464,
+      "total_time_s": 5840.5
     },
     "astar": {
       "nodes_explored": 8,
-      "time_ms": 0.045,
+      "time_ms": 0.051,
       "distance_m": 5859.8,
-      "risk_score": 643.4253,
-      "total_time_s": 2584.6
+      "risk_score": 81.2464,
+      "total_time_s": 5840.5
     },
     "improved": {
-      "nodes_explored": 7,
-      "time_ms": 48.418,
-      "distance_m": 8404.9,
-      "risk_score": 86.7446,
-      "total_time_s": 3883.9
+      "nodes_explored": 53,
+      "time_ms": 50.296,
+      "distance_m": 5859.8,
+      "risk_score": 81.2464,
+      "total_time_s": 5840.5
     }
   },
   {
@@ -357,24 +357,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 116,
-      "time_ms": 0.158,
+      "time_ms": 0.229,
       "distance_m": 68180.1,
-      "risk_score": 3912.9821,
-      "total_time_s": 34095.8
+      "risk_score": 56.4726,
+      "total_time_s": 90016.7
     },
     "astar": {
       "nodes_explored": 96,
-      "time_ms": 0.186,
+      "time_ms": 0.253,
       "distance_m": 68619.6,
-      "risk_score": 3510.1049,
-      "total_time_s": 33926.6
+      "risk_score": 56.562,
+      "total_time_s": 89847.4
     },
     "improved": {
-      "nodes_explored": 22,
-      "time_ms": 206.55,
-      "distance_m": 77281.5,
-      "risk_score": 44.7759,
-      "total_time_s": 37870.5
+      "nodes_explored": 70,
+      "time_ms": 91.338,
+      "distance_m": 71550.3,
+      "risk_score": 56.3521,
+      "total_time_s": 93936.1
     }
   },
   {
@@ -384,24 +384,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 364,
-      "time_ms": 1.062,
+      "time_ms": 1.141,
       "distance_m": 277136.0,
-      "risk_score": 6194.726,
-      "total_time_s": 136326.0
+      "risk_score": 52.5651,
+      "total_time_s": 377911.5
     },
     "astar": {
       "nodes_explored": 280,
-      "time_ms": 1.395,
+      "time_ms": 1.434,
       "distance_m": 277868.2,
-      "risk_score": 6113.6526,
-      "total_time_s": 136677.4
+      "risk_score": 52.5571,
+      "total_time_s": 379832.2
     },
     "improved": {
-      "nodes_explored": 92,
-      "time_ms": 356.919,
-      "distance_m": 287817.7,
-      "risk_score": 43.7689,
-      "total_time_s": 141013.8
+      "nodes_explored": 232,
+      "time_ms": 209.048,
+      "distance_m": 287814.6,
+      "risk_score": 50.6144,
+      "total_time_s": 392026.0
     }
   },
   {
@@ -411,24 +411,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 303,
-      "time_ms": 0.546,
+      "time_ms": 0.871,
       "distance_m": 169954.9,
-      "risk_score": 4000.9951,
-      "total_time_s": 85408.9
+      "risk_score": 52.8597,
+      "total_time_s": 235776.6
     },
     "astar": {
       "nodes_explored": 209,
-      "time_ms": 0.762,
+      "time_ms": 1.226,
       "distance_m": 170231.5,
-      "risk_score": 3951.1027,
-      "total_time_s": 85544.9
+      "risk_score": 52.8586,
+      "total_time_s": 237004.9
     },
     "improved": {
-      "nodes_explored": 43,
-      "time_ms": 222.42,
-      "distance_m": 174459.3,
-      "risk_score": 43.9235,
-      "total_time_s": 87118.5
+      "nodes_explored": 182,
+      "time_ms": 146.347,
+      "distance_m": 174146.9,
+      "risk_score": 51.6641,
+      "total_time_s": 243219.2
     }
   },
   {
@@ -438,24 +438,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 238,
-      "time_ms": 0.259,
+      "time_ms": 0.806,
       "distance_m": 97553.7,
-      "risk_score": 3425.8725,
-      "total_time_s": 45799.2
+      "risk_score": 50.453,
+      "total_time_s": 127358.5
     },
     "astar": {
       "nodes_explored": 114,
-      "time_ms": 0.717,
+      "time_ms": 0.626,
       "distance_m": 97690.4,
-      "risk_score": 3222.9953,
-      "total_time_s": 45668.5
+      "risk_score": 50.3893,
+      "total_time_s": 127227.8
     },
     "improved": {
-      "nodes_explored": 35,
-      "time_ms": 137.197,
-      "distance_m": 100923.0,
-      "risk_score": 42.1424,
-      "total_time_s": 46955.3
+      "nodes_explored": 79,
+      "time_ms": 113.107,
+      "distance_m": 100441.0,
+      "risk_score": 50.0153,
+      "total_time_s": 131262.4
     }
   },
   {
@@ -465,24 +465,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 375,
-      "time_ms": 0.631,
+      "time_ms": 0.954,
       "distance_m": 339105.7,
-      "risk_score": 6501.1049,
-      "total_time_s": 166443.5
+      "risk_score": 52.724,
+      "total_time_s": 467865.9
     },
     "astar": {
       "nodes_explored": 342,
-      "time_ms": 1.08,
+      "time_ms": 1.687,
       "distance_m": 339561.4,
-      "risk_score": 6469.9239,
-      "total_time_s": 166658.8
+      "risk_score": 52.7176,
+      "total_time_s": 468558.3
     },
     "improved": {
-      "nodes_explored": 99,
-      "time_ms": 285.336,
-      "distance_m": 349787.5,
-      "risk_score": 43.827,
-      "total_time_s": 171131.3
+      "nodes_explored": 246,
+      "time_ms": 287.861,
+      "distance_m": 353431.3,
+      "risk_score": 51.0904,
+      "total_time_s": 484575.1
     }
   },
   {
@@ -492,24 +492,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 209,
-      "time_ms": 0.348,
+      "time_ms": 0.707,
       "distance_m": 90873.4,
-      "risk_score": 4043.3417,
-      "total_time_s": 45219.3
+      "risk_score": 54.128,
+      "total_time_s": 115635.6
     },
     "astar": {
       "nodes_explored": 151,
-      "time_ms": 0.321,
+      "time_ms": 0.879,
       "distance_m": 91010.1,
-      "risk_score": 3840.4646,
-      "total_time_s": 45088.6
+      "risk_score": 54.054,
+      "total_time_s": 115504.9
     },
     "improved": {
-      "nodes_explored": 35,
-      "time_ms": 226.733,
-      "distance_m": 101511.3,
-      "risk_score": 41.6965,
-      "total_time_s": 45961.2
+      "nodes_explored": 116,
+      "time_ms": 98.984,
+      "distance_m": 93940.8,
+      "risk_score": 53.9723,
+      "total_time_s": 119593.5
     }
   },
   {
@@ -519,24 +519,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 47,
-      "time_ms": 0.174,
+      "time_ms": 0.2,
       "distance_m": 12220.7,
-      "risk_score": 1443.4253,
-      "total_time_s": 6088.9
+      "risk_score": 91.0077,
+      "total_time_s": 12336.8
     },
     "astar": {
       "nodes_explored": 16,
-      "time_ms": 0.135,
+      "time_ms": 0.148,
       "distance_m": 12220.7,
-      "risk_score": 1443.4253,
-      "total_time_s": 6088.9
+      "risk_score": 91.0077,
+      "total_time_s": 12336.8
     },
     "improved": {
-      "nodes_explored": 10,
-      "time_ms": 110.74,
-      "distance_m": 15686.0,
-      "risk_score": 92.8975,
-      "total_time_s": 7215.3
+      "nodes_explored": 57,
+      "time_ms": 50.863,
+      "distance_m": 12739.9,
+      "risk_score": 91.3742,
+      "total_time_s": 13290.2
     }
   },
   {
@@ -546,24 +546,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 164,
-      "time_ms": 0.443,
+      "time_ms": 0.565,
       "distance_m": 79726.8,
-      "risk_score": 5154.6552,
-      "total_time_s": 38924.9
+      "risk_score": 54.7551,
+      "total_time_s": 101269.7
     },
     "astar": {
       "nodes_explored": 131,
-      "time_ms": 0.421,
+      "time_ms": 0.754,
       "distance_m": 79863.5,
-      "risk_score": 4951.778,
-      "total_time_s": 38794.2
+      "risk_score": 54.6697,
+      "total_time_s": 101138.9
     },
     "improved": {
-      "nodes_explored": 46,
-      "time_ms": 256.405,
-      "distance_m": 90424.6,
-      "risk_score": 44.5911,
-      "total_time_s": 43069.8
+      "nodes_explored": 93,
+      "time_ms": 122.521,
+      "distance_m": 89821.9,
+      "risk_score": 52.6028,
+      "total_time_s": 111693.3
     }
   },
   {
@@ -573,24 +573,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 102,
-      "time_ms": 1.113,
+      "time_ms": 0.249,
       "distance_m": 67365.1,
-      "risk_score": 2912.9821,
-      "total_time_s": 33712.4
+      "risk_score": 55.946,
+      "total_time_s": 89633.3
     },
     "astar": {
       "nodes_explored": 86,
-      "time_ms": 0.526,
+      "time_ms": 0.257,
       "distance_m": 67501.8,
-      "risk_score": 2710.1049,
-      "total_time_s": 33581.7
+      "risk_score": 55.8427,
+      "total_time_s": 89502.6
     },
     "improved": {
-      "nodes_explored": 14,
-      "time_ms": 75.107,
-      "distance_m": 76163.6,
-      "risk_score": 43.9653,
-      "total_time_s": 37525.6
+      "nodes_explored": 62,
+      "time_ms": 66.663,
+      "distance_m": 70432.4,
+      "risk_score": 55.6593,
+      "total_time_s": 93591.2
     }
   },
   {
@@ -600,24 +600,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 176,
-      "time_ms": 0.515,
+      "time_ms": 0.253,
       "distance_m": 84051.4,
-      "risk_score": 2753.7565,
-      "total_time_s": 39129.2
+      "risk_score": 51.3017,
+      "total_time_s": 112118.5
     },
     "astar": {
       "nodes_explored": 92,
-      "time_ms": 0.534,
+      "time_ms": 0.221,
       "distance_m": 84188.1,
-      "risk_score": 2550.8793,
-      "total_time_s": 38998.5
+      "risk_score": 51.2263,
+      "total_time_s": 111987.8
     },
     "improved": {
-      "nodes_explored": 20,
-      "time_ms": 119.96,
-      "distance_m": 86973.0,
-      "risk_score": 41.9634,
-      "total_time_s": 40098.6
+      "nodes_explored": 63,
+      "time_ms": 90.972,
+      "distance_m": 86490.9,
+      "risk_score": 50.8115,
+      "total_time_s": 115654.1
     }
   },
   {
@@ -627,24 +627,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 343,
-      "time_ms": 0.444,
+      "time_ms": 0.466,
       "distance_m": 231925.1,
-      "risk_score": 5532.4814,
-      "total_time_s": 114446.6
+      "risk_score": 52.6882,
+      "total_time_s": 316290.8
     },
     "astar": {
       "nodes_explored": 261,
-      "time_ms": 0.515,
+      "time_ms": 0.524,
       "distance_m": 232657.3,
-      "risk_score": 5451.408,
-      "total_time_s": 114797.9
+      "risk_score": 52.6782,
+      "total_time_s": 318211.4
     },
     "improved": {
-      "nodes_explored": 77,
-      "time_ms": 314.011,
-      "distance_m": 242606.8,
-      "risk_score": 43.7218,
-      "total_time_s": 119134.3
+      "nodes_explored": 211,
+      "time_ms": 195.068,
+      "distance_m": 242603.7,
+      "risk_score": 50.3685,
+      "total_time_s": 330405.3
     }
   },
   {
@@ -654,24 +654,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 287,
-      "time_ms": 0.297,
+      "time_ms": 0.376,
       "distance_m": 156229.2,
-      "risk_score": 3510.7703,
-      "total_time_s": 78492.5
+      "risk_score": 53.7863,
+      "total_time_s": 220125.6
     },
     "astar": {
       "nodes_explored": 183,
-      "time_ms": 0.31,
+      "time_ms": 0.408,
       "distance_m": 156505.8,
-      "risk_score": 3460.8779,
-      "total_time_s": 78628.5
+      "risk_score": 53.7835,
+      "total_time_s": 221353.9
     },
     "improved": {
-      "nodes_explored": 30,
-      "time_ms": 164.584,
-      "distance_m": 160733.6,
-      "risk_score": 44.1446,
-      "total_time_s": 80202.1
+      "nodes_explored": 179,
+      "time_ms": 152.966,
+      "distance_m": 160421.2,
+      "risk_score": 52.4642,
+      "total_time_s": 227568.2
     }
   },
   {
@@ -681,24 +681,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 143,
-      "time_ms": 0.179,
+      "time_ms": 0.524,
       "distance_m": 72613.8,
-      "risk_score": 2527.0023,
-      "total_time_s": 35920.8
+      "risk_score": 54.124,
+      "total_time_s": 101155.3
     },
     "astar": {
       "nodes_explored": 69,
-      "time_ms": 0.139,
+      "time_ms": 0.442,
       "distance_m": 72654.8,
-      "risk_score": 2427.0023,
-      "total_time_s": 35866.5
+      "risk_score": 54.15,
+      "total_time_s": 101101.0
     },
     "improved": {
       "nodes_explored": 13,
-      "time_ms": 52.248,
+      "time_ms": 18.065,
       "distance_m": 75535.3,
-      "risk_score": 43.6886,
-      "total_time_s": 36890.2
+      "risk_score": 51.4487,
+      "total_time_s": 104743.5
     }
   },
   {
@@ -708,24 +708,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 254,
-      "time_ms": 0.279,
+      "time_ms": 0.837,
       "distance_m": 106496.9,
-      "risk_score": 2658.9594,
-      "total_time_s": 52388.1
+      "risk_score": 54.19,
+      "total_time_s": 149224.5
     },
     "astar": {
       "nodes_explored": 80,
-      "time_ms": 0.164,
+      "time_ms": 0.55,
       "distance_m": 106537.9,
-      "risk_score": 2558.9594,
-      "total_time_s": 52333.7
+      "risk_score": 54.2076,
+      "total_time_s": 149170.2
     },
     "improved": {
       "nodes_explored": 16,
-      "time_ms": 73.457,
+      "time_ms": 30.22,
       "distance_m": 109418.4,
-      "risk_score": 43.9547,
-      "total_time_s": 53357.5
+      "risk_score": 52.3413,
+      "total_time_s": 152812.8
     }
   },
   {
@@ -735,24 +735,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 115,
-      "time_ms": 0.154,
+      "time_ms": 0.269,
       "distance_m": 68092.1,
-      "risk_score": 3812.9821,
-      "total_time_s": 34058.5
+      "risk_score": 56.4164,
+      "total_time_s": 89979.4
     },
     "astar": {
       "nodes_explored": 94,
-      "time_ms": 0.182,
+      "time_ms": 0.286,
       "distance_m": 68531.7,
-      "risk_score": 3410.1049,
-      "total_time_s": 33889.3
+      "risk_score": 56.5063,
+      "total_time_s": 89810.2
     },
     "improved": {
-      "nodes_explored": 21,
-      "time_ms": 155.353,
-      "distance_m": 77193.5,
-      "risk_score": 44.713,
-      "total_time_s": 37833.2
+      "nodes_explored": 69,
+      "time_ms": 83.953,
+      "distance_m": 71462.4,
+      "risk_score": 56.2983,
+      "total_time_s": 93898.9
     }
   },
   {
@@ -762,24 +762,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 83,
-      "time_ms": 0.197,
+      "time_ms": 0.217,
       "distance_m": 58435.9,
-      "risk_score": 2482.8513,
-      "total_time_s": 29058.6
+      "risk_score": 53.7755,
+      "total_time_s": 78999.9
     },
     "astar": {
       "nodes_explored": 71,
-      "time_ms": 0.276,
+      "time_ms": 0.222,
       "distance_m": 58477.0,
-      "risk_score": 2382.8513,
-      "total_time_s": 29004.3
+      "risk_score": 53.808,
+      "total_time_s": 78945.6
     },
     "improved": {
       "nodes_explored": 12,
-      "time_ms": 37.032,
+      "time_ms": 9.767,
       "distance_m": 61357.5,
-      "risk_score": 43.5915,
-      "total_time_s": 30028.0
+      "risk_score": 50.4985,
+      "total_time_s": 82588.1
     }
   },
   {
@@ -789,24 +789,24 @@
     ],
     "dijkstra": {
       "nodes_explored": 279,
-      "time_ms": 0.311,
+      "time_ms": 0.385,
       "distance_m": 145698.0,
-      "risk_score": 3104.0683,
-      "total_time_s": 73078.3
+      "risk_score": 54.3644,
+      "total_time_s": 207899.7
     },
     "astar": {
       "nodes_explored": 176,
-      "time_ms": 0.307,
+      "time_ms": 0.389,
       "distance_m": 145974.7,
-      "risk_score": 3054.1758,
-      "total_time_s": 73214.4
+      "risk_score": 54.3602,
+      "total_time_s": 209128.0
     },
     "improved": {
-      "nodes_explored": 25,
-      "time_ms": 137.13,
-      "distance_m": 149208.6,
-      "risk_score": 44.2715,
-      "total_time_s": 74326.3
+      "nodes_explored": 175,
+      "time_ms": 156.538,
+      "distance_m": 148896.2,
+      "risk_score": 52.9984,
+      "total_time_s": 212716.3
     }
   }
 ]

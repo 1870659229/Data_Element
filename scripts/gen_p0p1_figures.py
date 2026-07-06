@@ -10,7 +10,7 @@
     3. training_efficiency_bubble.png 训练效率气泡图(替代学习曲线)
     4. model_radar.png               7 模型 4 指标雷达图(替代多场景)
   P1:
-    5. constraint_violation.png      物理约束违反率(按船型)
+    5. constraint_violation.png      物理约束裕度紧张度(按船型)
     6. constraint_visualization.png  物理约束可视化(地图叠加)
     7. failure_cases.png             预测失败案例分析
     8. code_structure.png            代码模块结构图
@@ -395,7 +395,7 @@ def gen_model_radar():
 
 
 # ======================== P1-6: 物理约束违反率 ========================
-def gen_constraint_violation():
+def gen_margin_tension_heatmap():
     from ship_navigator import PhysicalConstraintChecker, ShipCharacteristics, ShipCharacteristicsManager
 
     # 加载边特征和节点
@@ -438,12 +438,22 @@ def gen_constraint_violation():
     # 初始化约束检查器
     checker = PhysicalConstraintChecker(edge_features, nodes_dict, G)
 
-    # 按船型模板统计
+    # 按船型模板统计裕度分布
     templates = ShipCharacteristicsManager.SHIP_TEMPLATES
     ship_types = list(templates.keys())
-    violation_counts = {'draft': [], 'height': [], 'width': []}
     total_edges = len(checker.depth_map)
 
+    # 裕度分档：安全裕度 = 可用深度 / (船舶需求深度)
+    # 船舶需求深度 = 吃水 × 1.2（安全裕量）
+    bins = [
+        ('阻断\n(<1.0x)', '#E53935', lambda r: r < 1.0),
+        ('紧张\n(1.0-1.2x)', '#FF7043', lambda r: 1.0 <= r < 1.2),
+        ('适中\n(1.2-1.5x)', '#FFCA28', lambda r: 1.2 <= r < 1.5),
+        ('宽裕\n(1.5-2.0x)', '#66BB6A', lambda r: 1.5 <= r < 2.0),
+        ('极宽裕\n(>2.0x)', '#42A5F5', lambda r: r >= 2.0),
+    ]
+
+    margin_data = {}
     for stype, params in templates.items():
         ship = ShipCharacteristics(
             ship_name=stype,
@@ -451,54 +461,56 @@ def gen_constraint_violation():
             draft=params['draft'], height=params['height'],
             tonnage=params['tonnage'], max_speed=params['max_speed']
         )
-        draft_v = sum(1 for ek, d in checker.depth_map.items()
-                      if ship.draft > d * 1.2)
-        height_v = sum(1 for ek, h in checker.height_map.items()
-                       if ship.height > h * 1.2)
-        width_v = sum(1 for ek, w in checker.width_map.items()
-                      if ship.width > w * 1.2)
-        violation_counts['draft'].append(draft_v / total_edges * 100)
-        violation_counts['height'].append(height_v / total_edges * 100)
-        violation_counts['width'].append(width_v / total_edges * 100)
+        req_depth = ship.draft * 1.2
+        if req_depth <= 0:
+            req_depth = 0.01
 
+        counts = []
+        for _, _, condition in bins:
+            cnt = sum(1 for d in checker.depth_map.values()
+                     if condition(d / req_depth))
+            counts.append(cnt)
+        margin_data[stype] = counts
+
+    # 绘制堆叠柱状图
+    fig, ax = plt.subplots(figsize=(14, 6))
     x = np.arange(len(ship_types))
-    width = 0.25
-    fig, ax = plt.subplots(figsize=(12, 6))
-    bars_d = ax.bar(x - width, violation_counts['draft'], width, label='吃水超限', color='#E53935')
-    bars_h = ax.bar(x, violation_counts['height'], width, label='高度超限', color='#1E88E5')
-    bars_w = ax.bar(x + width, violation_counts['width'], width, label='宽度超限', color='#43A047')
+    width = 0.6
+
+    bottom = np.zeros(len(ship_types))
+    for i, (label, color, _) in enumerate(bins):
+        values = [margin_data[st][i] for st in ship_types]
+        bars = ax.bar(x, values, width, bottom=bottom, label=label,
+                      color=color, edgecolor='white', linewidth=0.5)
+        for j, (bar, val) in enumerate(zip(bars, values)):
+            if val > 0:
+                ax.text(bar.get_x() + bar.get_width() / 2,
+                        bottom[j] + val / 2,
+                        str(val), ha='center', va='center',
+                        fontsize=7, fontweight='bold')
+        bottom += np.array(values)
 
     ax.set_xticks(x)
     ax.set_xticklabels(ship_types, fontsize=9, rotation=20, ha='right')
-    ax.set_ylabel("违反率 (%)")
-    ax.set_title("各船型物理约束违反率", fontsize=14, fontweight='bold')
-    ax.legend()
-    ax.grid(axis='y', alpha=0.3)
+    ax.set_ylabel("边数（共966条有向边）", fontsize=11)
+    ax.set_title("各船型航道水深裕度分布\n（裕度 = 航道水深 / 船舶吃水×1.2安全裕量）",
+                 fontsize=13, fontweight='bold')
+    ax.legend(loc='upper right', fontsize=8, ncol=5)
+    ax.set_ylim(0, total_edges * 1.05)
+    ax.grid(axis='y', alpha=0.2)
 
-    # 自适应 y 轴: 有数据时给柱顶留 20% 余量,全 0 时给个固定上界并加备注
-    all_vals = (violation_counts['draft'] + violation_counts['height']
-                + violation_counts['width'])
-    if max(all_vals) > 0:
-        ax.set_ylim(0, max(all_vals) * 1.2)
-        # 在每根非 0 柱顶标数值
-        for bars in [bars_d, bars_h, bars_w]:
-            for b in bars:
-                h = b.get_height()
-                if h > 0:
-                    ax.text(b.get_x() + b.get_width() / 2, h, f'{h:.2f}%',
-                            ha='center', va='bottom', fontsize=8)
-    else:
-        ax.set_ylim(0, 1.0)
-        ax.text(0.5, 0.5, '当前阈值 (1.2×) 下, 所有船型均无约束违反',
-                transform=ax.transAxes, ha='center', va='center',
-                fontsize=12, color='gray',
-                bbox=dict(boxstyle='round,pad=0.5', facecolor='#FFF8E1',
-                          edgecolor='#FFA000', alpha=0.9))
+    for i, stype in enumerate(ship_types):
+        blocked = margin_data[stype][0]
+        if blocked > 0:
+            ax.annotate(f'阻断{blocked}条\n({blocked/total_edges*100:.0f}%)',
+                        xy=(i, blocked), fontsize=7, color='#E53935',
+                        ha='center', va='bottom',
+                        xytext=(0, 8), textcoords='offset points')
 
     out = IMG_DIR / "constraint_violation.png"
     fig.savefig(out, dpi=150, bbox_inches='tight')
     plt.close(fig)
-    log.info("约束违反率图已保存: %s", out)
+    log.info("裕度紧张度图已保存: %s", out)
 
 
 # ======================== P1-7: 物理约束可视化 ========================
@@ -572,6 +584,38 @@ def gen_constraint_visualization():
              len(normal_edges), len(shallow_edges), len(low_edges), len(narrow_edges))
 
     fig, ax = plt.subplots(figsize=(10, 10))
+
+    # 三层底图: 淡蓝水面 + 浅灰陆地 + 深灰岸线
+    try:
+        import geopandas as gpd
+        land_shp = ROOT / "Data" / "shapefiles" / "ne_10m_land.shp"
+        coastline_shp = ROOT / "Data" / "shapefiles" / "ne_10m_coastline.shp"
+
+        all_lons = [lon for xs, _ in normal_edges + shallow_edges + low_edges + narrow_edges for lon in xs]
+        all_lats = [lat for _, ys in normal_edges + shallow_edges + low_edges + narrow_edges for lat in ys]
+        pad_lon = (max(all_lons) - min(all_lons)) * 0.08
+        pad_lat = (max(all_lats) - min(all_lats)) * 0.08
+        lon_min, lon_max = min(all_lons) - pad_lon, max(all_lons) + pad_lon
+        lat_min, lat_max = min(all_lats) - pad_lat, max(all_lats) + pad_lat
+
+        # 1. 淡蓝水面
+        ax.set_facecolor('#eef5fa')
+
+        # 2. 浅灰陆地填充
+        if land_shp.exists():
+            land = gpd.read_file(land_shp)
+            land.plot(ax=ax, color='#f0ebe0', edgecolor='none', zorder=0)
+
+        # 3. 深灰岸线
+        if coastline_shp.exists():
+            coastline = gpd.read_file(coastline_shp)
+            coastline.plot(ax=ax, color='#5a5a5a', linewidth=0.7, zorder=1)
+
+        ax.set_xlim(lon_min, lon_max)
+        ax.set_ylim(lat_min, lat_max)
+    except Exception:
+        pass
+
     # 渲染顺序：先把大量浅水/限高/窄航画作底图（细、半透明），
     # 再把稀少的正常航道用较粗深色画在最上层,确保 4 类都能被肉眼看到
     for xs, ys in shallow_edges:
@@ -750,7 +794,7 @@ def main():
         ("P0-3: 残差分布图", gen_residual_distribution),
         ("P0-4: 训练效率气泡图", gen_training_efficiency_bubble),
         ("P0-5: 雷达图", gen_model_radar),
-        ("P1-6: 约束违反率", gen_constraint_violation),
+        ("P1-6: 裕度紧张度", gen_margin_tension_heatmap),
         ("P1-7: 约束可视化", gen_constraint_visualization),
         ("P1-8: 失败案例", gen_failure_cases),
         ("P1-9: 代码结构图", gen_code_structure),

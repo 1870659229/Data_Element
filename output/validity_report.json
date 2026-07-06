@@ -1,0 +1,122 @@
+{
+  "path_validity": {
+    "num_od_pairs": 15,
+    "mean_jaccard": 0.2795,
+    "median_jaccard": 0.293,
+    "min_jaccard": 0.1031,
+    "max_jaccard": 0.4274,
+    "details": [
+      {
+        "od": "1144->161",
+        "jaccard": 0.3333,
+        "planned_nodes": 117,
+        "actual_nodes": 271,
+        "intersection": 97
+      },
+      {
+        "od": "275->963",
+        "jaccard": 0.3287,
+        "planned_nodes": 111,
+        "actual_nodes": 269,
+        "intersection": 94
+      },
+      {
+        "od": "257->1240",
+        "jaccard": 0.3088,
+        "planned_nodes": 106,
+        "actual_nodes": 267,
+        "intersection": 88
+      },
+      {
+        "od": "208->1144",
+        "jaccard": 0.318,
+        "planned_nodes": 107,
+        "actual_nodes": 266,
+        "intersection": 90
+      },
+      {
+        "od": "86->2",
+        "jaccard": 0.1969,
+        "planned_nodes": 51,
+        "actual_nodes": 259,
+        "intersection": 51
+      },
+      {
+        "od": "86->839",
+        "jaccard": 0.3023,
+        "planned_nodes": 78,
+        "actual_nodes": 258,
+        "intersection": 78
+      },
+      {
+        "od": "188->22",
+        "jaccard": 0.2888,
+        "planned_nodes": 100,
+        "actual_nodes": 257,
+        "intersection": 80
+      },
+      {
+        "od": "188->387",
+        "jaccard": 0.2873,
+        "planned_nodes": 99,
+        "actual_nodes": 255,
+        "intersection": 79
+      },
+      {
+        "od": "161->100",
+        "jaccard": 0.293,
+        "planned_nodes": 101,
+        "actual_nodes": 252,
+        "intersection": 80
+      },
+      {
+        "od": "86->793",
+        "jaccard": 0.2974,
+        "planned_nodes": 101,
+        "actual_nodes": 248,
+        "intersection": 80
+      },
+      {
+        "od": "155->74",
+        "jaccard": 0.1031,
+        "planned_nodes": 46,
+        "actual_nodes": 243,
+        "intersection": 27
+      },
+      {
+        "od": "83->64",
+        "jaccard": 0.2441,
+        "planned_nodes": 74,
+        "actual_nodes": 242,
+        "intersection": 62
+      },
+      {
+        "od": "1138->963",
+        "jaccard": 0.2812,
+        "planned_nodes": 89,
+        "actual_nodes": 239,
+        "intersection": 72
+      },
+      {
+        "od": "305->1240",
+        "jaccard": 0.4274,
+        "planned_nodes": 116,
+        "actual_nodes": 228,
+        "intersection": 103
+      },
+      {
+        "od": "266->57",
+        "jaccard": 0.1818,
+        "planned_nodes": 47,
+        "actual_nodes": 226,
+        "intersection": 42
+      }
+    ],
+    "failed_count": 0
+  },
+  "constraint_validity": {
+    "total_blocked_edges": 611,
+    "no_large_ship_edges": 196,
+    "constraint_validity_rate": 0.3208
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "raw_records": 1172749,
+  "after_dedup": 1170221,
+  "removed_dedup": 2528,
+  "after_speed_filter": 1154129,
+  "removed_speed": 16092,
+  "after_drift": 1137933,
+  "removed_drift": 16196,
+  "after_short_traj": 1107258,
+  "removed_short_traj": 30675,
+  "after_missing": 1105934,
+  "removed_missing": 1324,
+  "final_records": 1105934,
+  "total_removed": 66815,
+  "retention_rate": 94.3
+}

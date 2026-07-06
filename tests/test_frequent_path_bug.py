@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-测试"通航频次最高"路径是否真的被生成
+测试"频次优先"路径是否真的被生成
 
 Bug描述(从 benchmark_frequent.py 实测数据)：
-- 0/10 船型的 alternative_paths 中包含'通航频次最高'路径
+- 0/10 船型的 alternative_paths 中包含'频次优先'路径
 - 实际跑出来的导航结果 total_frequency 字段全为 0
 - _bidirectional_a_star_frequent 是死代码，从未被 find_paths() 调用
 - adra_star_planner._theta_shortcut_cost 的 'frequent' 分支返回常数 50.0
@@ -102,7 +102,7 @@ def _make_navigator():
 
 def test_frequent_path_exists_in_find_paths():
     """
-    BUG: find_paths() 的结果中应包含'通航频次最高'类型的路径
+    BUG: find_paths() 的结果中应包含'频次优先'类型的路径
     """
     navigator, ship, edge_features, G = _make_navigator()
     paths = navigator.find_paths(start=0, end=3, ship=ship, hour=12, max_paths=3)
@@ -112,12 +112,12 @@ def test_frequent_path_exists_in_find_paths():
     path_types = [p.path_type for p in paths]
     print(f"  生成的路径类型: {path_types}")
     assert PathType.FREQUENT in path_types, \
-        f"应包含'通航频次最高'路径, 实际类型: {path_types}"
+        f"应包含'频次优先'路径, 实际类型: {path_types}"
 
 
 def test_frequent_path_prefers_high_frequency_edges():
     """
-    BUG: '通航频次最高'路径应优先走高频段
+    BUG: '频次优先'路径应优先走高频段
     期望: 路径经过备用1(0→10→20→3), total_frequency=180
     而非: 主路径(0→1→2→3), total_frequency=11
     """
@@ -125,24 +125,24 @@ def test_frequent_path_prefers_high_frequency_edges():
     paths = navigator.find_paths(start=0, end=3, ship=ship, hour=12, max_paths=3)
 
     frequent_paths = [p for p in paths if p.path_type == PathType.FREQUENT]
-    assert len(frequent_paths) >= 1, "必须有通航频次最高路径"
+    assert len(frequent_paths) >= 1, "必须有频次优先路径"
 
     frequent_path = frequent_paths[0]
     total_freq = sum(
         edge_features.get((frequent_path.nodes[i], frequent_path.nodes[i+1]), {}).get('segment_count', 0)
         for i in range(len(frequent_path.nodes) - 1)
     )
-    print(f"  通航频次最高路径节点: {frequent_path.nodes}")
+    print(f"  频次优先路径节点: {frequent_path.nodes}")
     print(f"  路径总频次: {total_freq}")
     # 高频段总频次=180, 中频段=30, 低频段=11
     # 至少应>50才合理
     assert total_freq >= 50, \
-        f"通航频次最高路径频次太低: {total_freq} (应>=50, 表明走了高频段)"
+        f"频次优先路径频次太低: {total_freq} (应>=50, 表明走了高频段)"
 
 
 def test_frequent_path_is_different_from_safest():
     """
-    BUG: '通航频次最高'路径应与'安全优先'路径不同
+    BUG: '频次优先'路径应与'安全优先'路径不同
     (如果相同, 说明只是改了label)
     """
     navigator, ship, edge_features, G = _make_navigator()
@@ -151,12 +151,12 @@ def test_frequent_path_is_different_from_safest():
     frequent = next((p for p in paths if p.path_type == PathType.FREQUENT), None)
     safest = next((p for p in paths if p.path_type == PathType.SAFEST), None)
 
-    assert frequent is not None, "无通航频次最高路径"
+    assert frequent is not None, "无频次优先路径"
     assert safest is not None, "无安全优先路径"
     print(f"  安全优先节点: {safest.nodes}")
-    print(f"  通航频次最高节点: {frequent.nodes}")
+    print(f"  频次优先节点: {frequent.nodes}")
     assert frequent.nodes != safest.nodes, \
-        "通航频次最高与安全优先路径相同 (BUG: 仅仅是改了label)"
+        "频次优先与安全优先路径相同 (BUG: 仅仅是改了label)"
 
 
 def test_bidirectional_a_star_frequent_returns_valid_path():

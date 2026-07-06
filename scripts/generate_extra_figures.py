@@ -90,46 +90,88 @@ def gen_class_a(viz: TopologyVisualizer):
     viz.plot_traffic_heatmap(
         edge_csv, topo_csv, output_path=str(IMG_DIR / "traffic_heatmap.png"))
 
-    # 6. 路径对比：直接用 visualize.plot_path_comparison (原 demo_route_viz.py 丢失, 此为等价实现)
+    # 6. 路径对比：使用真实改进A*路径规划（4种策略）
     log.info("=== A-6: path_comparison.png ===")
     topo_csv = OUTPUT_DIR / "topology_nodes.csv"
     topo_edges = OUTPUT_DIR / "topology_edges.csv"
-    if (IMG_DIR / "path_comparison.png").exists():
-        log.info("path_comparison.png 已存在，跳过")
-    elif topo_csv.exists() and topo_edges.exists():
+    edge_csv = OUTPUT_DIR / "edge_features_dynamic_weights.csv"
+    if topo_csv.exists() and topo_edges.exists() and edge_csv.exists():
         import networkx as nx
+        from ship_navigator import PhysicalConstraintChecker, ShipCharacteristics, MultiObjectiveNavigator
+
         nodes_df = pd.read_csv(topo_csv)
         edges_df = pd.read_csv(topo_edges)
+        edge_feat_df = pd.read_csv(edge_csv)
+
+        # 构建图
         g = nx.DiGraph()
+        nodes_dict = {}
         for _, r in nodes_df.iterrows():
-            g.add_node(r['node_id'], lat=r['lat'], lon=r['lon'])
+            nid = int(r['node_id'])
+            lat = r.get('latitude', r.get('lat', 0))
+            lon = r.get('longitude', r.get('lon', 0))
+            g.add_node(nid, lat=lat, lon=lon)
+            nodes_dict[nid] = {'lat': lat, 'lon': lon}
+
         for _, r in edges_df.iterrows():
             g.add_edge(r['from_node'], r['to_node'], weight=r.get('weight', 1.0))
             if str(r.get('is_bidirectional', '')).lower() == 'true':
                 if not g.has_edge(r['to_node'], r['from_node']):
                     g.add_edge(r['to_node'], r['from_node'], weight=r.get('weight', 1.0))
-        # 构造 4 类示例路径: 选不同区间节点,让 4 条路径能区分开
-        nodes_list = nodes_df.to_dict('records')
-        n_total = len(nodes_list)
-        if n_total >= 4:
-            # 1/4, 1/2, 3/4 分位节点
-            q1 = nodes_list[n_total // 4]['node_id']
-            q2 = nodes_list[n_total // 2]['node_id']
-            q3 = nodes_list[3 * n_total // 4]['node_id']
-            start = nodes_list[0]['node_id']
-            end = nodes_list[-1]['node_id']
-            paths = {
-                'frequent': [start, q1, q2, end],     # 偏左路径
-                'safest':   [start, q2, end],         # 居中
-                'fastest':  [start, q1, q3, end],     # 偏右
-                'balanced': [start, q2, q3, end],     # 偏右下
-            }
-            viz.plot_path_comparison(g, paths, output_path=str(IMG_DIR / "path_comparison.png"))
-            log.info("已生成: path_comparison.png")
+
+        # 构建边特征字典
+        edge_features = {}
+        for _, row in edge_feat_df.iterrows():
+            fn = int(row.get('from_node', row.get('source', 0)))
+            tn = int(row.get('to_node', row.get('target', 0)))
+            feat = {k: row[k] for k in row.index
+                    if k not in ('from_node', 'to_node', 'source', 'target')}
+            edge_features[(fn, tn)] = feat
+            if (fn, tn) not in g.edges():
+                g.add_edge(fn, tn)
+
+        # 初始化约束检查器和路径规划器
+        checker = PhysicalConstraintChecker(edge_features, nodes_dict, g)
+        planner = MultiObjectiveNavigator(g, edge_features, checker)
+
+        # 选取OD对：使用拓扑中距离较远的首尾节点
+        start = int(nodes_df.iloc[0]['node_id'])
+        end = int(nodes_df.iloc[-1]['node_id'])
+
+        # 使用中型货船作为测试船型
+        ship = ShipCharacteristics(
+            ship_name="中型货船",
+            length=100, width=15, draft=3.2, height=20,
+            tonnage=5000, max_speed=12
+        )
+        hour = 8
+
+        # 运行4种策略获取真实路径
+        paths = {}
+        path_freq = planner._bidirectional_a_star_frequent(start, end, ship, set(), hour)
+        if path_freq:
+            paths['frequent'] = list(path_freq.nodes)
+
+        path_safe = planner._dijkstra_safest(start, end, ship, set(), hour)
+        if path_safe:
+            paths['safest'] = list(path_safe.nodes)
+
+        path_fast = planner._dijkstra_fastest(start, end, ship, hour, set())
+        if path_fast:
+            paths['fastest'] = list(path_fast.nodes)
+
+        path_short = planner._dijkstra_shortest_distance(start, end, ship, set(), hour)
+        if path_short:
+            paths['shortest'] = list(path_short.nodes)
+
+        if paths:
+            viz.plot_path_comparison(g, paths, output_path=str(IMG_DIR / "path_comparison.png"),
+                                     topo_edge_count=len(edges_df))
+            log.info("已生成: path_comparison.png (真实A*路径, %d 条策略)", len(paths))
         else:
-            log.warning("节点数 < 4, 跳过 path_comparison.png")
+            log.warning("所有策略均未找到路径, 跳过 path_comparison.png")
     else:
-        log.warning("topology 节点/边文件缺失, 跳过 path_comparison.png")
+        log.warning("拓扑/边特征文件缺失, 跳过 path_comparison.png")
 
 
 # ============== B/C/D 类 3 张：新增图 ==============
@@ -488,11 +530,6 @@ def gen_hourly_heatmap():
     axes[0].set_ylabel('平均耗时 (秒)')
     axes[0].set_title(f'24 小时时段平均耗时分布 (共 {sum(cnt)} 条预测记录)')
     axes[0].grid(True, alpha=0.3)
-    axes[0].axvspan(6, 9, alpha=0.15, color='orange', label='早高峰 6-9')
-    axes[0].axvspan(17, 19, alpha=0.15, color='red', label='晚高峰 17-19')
-    axes[0].axvspan(22, 24, alpha=0.15, color='navy', label='深夜 22-24')
-    axes[0].axvspan(0, 6, alpha=0.15, color='navy')
-    axes[0].legend(loc='upper right')
 
     # 下图：24h 预测记录数（数据密度）
     axes[1].bar(hours, cnt, color='coral', alpha=0.7)

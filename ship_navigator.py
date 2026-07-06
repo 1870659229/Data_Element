@@ -80,7 +80,7 @@ class PathType(Enum):
     SAFEST = "安全优先"
     FASTEST = "时间最短"
     BALANCED = "综合最优"
-    FREQUENT = "通航频次最高"
+    FREQUENT = "频次优先"
     SHORTEST = "距离最短"
     RELAXED = "约束放宽路径"
 
@@ -139,6 +139,7 @@ class PathResult:
     constraints_met: bool
     blocked_edges: List[Tuple[int, int]]
     waypoint_details: List[Dict]
+    nodes_explored: int = 0  # 搜索过程中实际探索的节点数（用于基准测试）
 
 
 # ==================== 模块1：船舶特征管理 ====================
@@ -667,20 +668,20 @@ class PhysicalConstraintChecker:
             # 无任何信息的边：允许通行但标记为未知
             return True, "未知航道（默认可通行）"
         
-        # 吃水检查（允许20%的吃水裕度）
+        # 吃水检查（允许20%的安全裕度：船舶所需水深 = 吃水 × 1.2）
         min_depth = self.depth_map.get(edge_key, 15.0)
-        if ship.draft > min_depth * 1.2:
-            return False, f"吃水超限: 船舶{ship.draft}m > 航道{min_depth * 1.2:.1f}m"
+        if ship.draft * 1.2 > min_depth:
+            return False, f"吃水超限: 船舶需{ship.draft * 1.2:.1f}m > 航道{min_depth:.1f}m"
         
-        # 高度检查（允许20%的高度裕度）
+        # 高度检查（允许20%的安全裕度：船舶所需净高 = 船高 × 1.2）
         max_height = self.height_map.get(edge_key, 100.0)
-        if ship.height > max_height * 1.2:
-            return False, f"高度超限: 船舶{ship.height}m > 限高{max_height * 1.2:.1f}m"
+        if ship.height * 1.2 > max_height:
+            return False, f"高度超限: 船舶需{ship.height * 1.2:.1f}m > 限高{max_height:.1f}m"
         
-        # 宽度检查（允许20%的宽度裕度）
+        # 宽度检查（允许20%的安全裕度：船舶所需宽度 = 船宽 × 1.2）
         max_width = self.width_map.get(edge_key, 100.0)
-        if ship.width > max_width * 1.2:
-            return False, f"宽度超限: 船舶{ship.width}m > 航道{max_width * 1.2:.1f}m"
+        if ship.width * 1.2 > max_width:
+            return False, f"宽度超限: 船舶需{ship.width * 1.2:.1f}m > 航道{max_width:.1f}m"
         
         return True, "可通行"
     
@@ -1727,7 +1728,7 @@ class MultiObjectiveNavigator:
         多目标差异化路径规划 (V4 混合策略)
 
         分层策略：
-        Phase 1: 基准路径（通航频次最高）
+        Phase 1: 基准路径（频次优先）
         Phase 2: 分支点驱动 — 结构差异化路径（绕路 <= 2.0x）
         Phase 3: 多目标属性差异化（安全/时间/频次，允许同结构但不同优化目标）
         Phase 4: 时间平移变体（不同出发时段 → 不同时间权重）
@@ -1787,7 +1788,7 @@ class MultiObjectiveNavigator:
             return True
 
         # ================================================================
-        # Phase 1: 基准路径（通航频次最高）
+        # Phase 1: 基准路径（频次优先）
         # ================================================================
         path_freq = self._bidirectional_a_star_frequent(
             start, end, ship, blocked_edges, hour)
@@ -2596,71 +2597,92 @@ class MultiObjectiveNavigator:
             dist = haversine_distance(
                 node_data.get('lat', 0), node_data.get('lon', 0),
                 end_lat, end_lon)
-            # 假设最优情况下以最小风险航行，风险率 ~0.1/公里
-            return dist * 0.0001  # 可接纳启发函数
+            # 可接纳启发函数：直线距离 × 最小风险率下界
+            # 0.0022略低于全图最小风险率(0.002284)，保证不高估实际剩余风险
+            return dist * 0.0022
         
         # 综合风险评分：考虑多维度风险因素
         def edge_risk(edge_key):
             base_risk = cc.get_edge_risk_score(edge_key, ship)
-            
+
             depth = cc.depth_map.get(edge_key, 0)
             width = cc.width_map.get(edge_key, 0)
             height = cc.height_map.get(edge_key, 0)
-            
+
             margin_penalty = 0.0
             if depth > 0 and ship.draft > depth * 0.8:
                 margin_penalty += (ship.draft / depth - 0.8) * 5
             if width > 0 and ship.width > width * 0.7:
                 margin_penalty += (ship.width / width - 0.7) * 5
-            
+
             features = self.edge_features.get(edge_key, {})
             traffic_density = features.get('ship_count', 0) / 100.0
             density_risk = min(traffic_density * 0.2, 1.0)
-            
+
             return base_risk + margin_penalty + density_risk
-        
-        g_score = {start: 0}
+
+        def edge_distance(edge_key):
+            """获取边的距离"""
+            features = self.edge_features.get(edge_key, {})
+            if features:
+                return features.get('avg_distance', 100)
+            return self.distance_weight.get(edge_key, 100)
+
+        # g_score存储距离加权平均风险（量级约50-60），与h值量级匹配
+        # dist_score存储累计距离，用于加权平均计算
+        g_score = {start: 0.0}       # 距离加权平均风险
+        dist_score = {start: 0.0}    # 累计距离
         f_score = {start: heuristic(start)}
         prev = {start: None}
         edge_used = {start: None}
         open_set = [(f_score[start], start)]
         closed_set = set()
-        
+        explored_count = 0
+
         while open_set:
             _, node = heapq.heappop(open_set)
-            
+
             if node in closed_set:
                 continue
             closed_set.add(node)
-            
+            explored_count += 1
+
             if node == end:
                 break
-            
+
             for neighbor in self.graph.successors(node):
                 if neighbor in closed_set:
                     continue
-                
+
                 edge_key = (node, neighbor)
                 if edge_key in blocked_edges:
                     continue
-                
-                tentative_g = g_score[node] + edge_risk(edge_key)
-                
+
+                risk = edge_risk(edge_key)
+                dist = edge_distance(edge_key)
+                old_dist = dist_score[node]
+                new_dist = old_dist + dist
+                # 距离加权平均风险递推: (g*old_dist + risk*dist) / new_dist
+                tentative_g = (g_score[node] * old_dist + risk * dist) / max(new_dist, 1)
+
                 if neighbor not in g_score or tentative_g < g_score[neighbor]:
                     prev[neighbor] = node
                     edge_used[neighbor] = edge_key
                     g_score[neighbor] = tentative_g
+                    dist_score[neighbor] = new_dist
                     f_score[neighbor] = tentative_g + heuristic(neighbor)
                     heapq.heappush(open_set, (f_score[neighbor], neighbor))
-        
+
         if end not in prev or prev[end] is None:
             return None
-        
+
         nodes, edges = self._reconstruct_path(end, prev, edge_used)
-        
-        return self._build_path_result(
+
+        result = self._build_path_result(
             PathType.SAFEST, nodes, edges, ship, blocked_edges, hour=hour
         )
+        result.nodes_explored = explored_count
+        return result
     
     def _dijkstra_fastest(self, start: int, end: int,
                           ship: ShipCharacteristics,
@@ -2890,7 +2912,7 @@ class MultiObjectiveNavigator:
                                         blocked_edges: Set[Tuple[int, int]],
                                         hour: int = None) -> Optional[PathResult]:
         """
-        Bidirectional A*算法 - 通航频次最高
+        Bidirectional A*算法 - 频次优先
         升级：基础Dijkstra → 双向启发式搜索
         
         核心改进：
